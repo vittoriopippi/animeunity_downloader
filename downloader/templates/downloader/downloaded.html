@@ -1,0 +1,34 @@
+{% extends 'downloader/base.html' %}
+
+{% block content %}
+<h2 class="mb-4">Downloaded Library</h2>
+
+{% if episodes %}
+<div class="row row-cols-1 row-cols-md-3 g-4">
+    {% for episode in episodes %}
+    <div class="col">
+        <div class="card bg-secondary text-white h-100">
+            <div class="card-body">
+                <h5 class="card-title">{{ episode.anime.title }}</h5>
+                <h6 class="card-subtitle mb-2 text-warning">Episode {{ episode.number }}</h6>
+                <p class="card-text small text-truncate">{{ episode.file_path }}</p>
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <span class="badge bg-success">Completed</span>
+                    <small>{{ episode.updated_at|date:"M d" }}</small>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-top-0">
+                <a href="{% url 'anime_detail' episode.anime.id %}" class="btn btn-outline-light btn-sm w-100">View
+                    Anime</a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-secondary py-5 text-center">
+    <p class="display-6">Library is empty</p>
+    <p>Downloads will appear here when completed.</p>
+</div>
+{% endif %}
+{% endblock %}

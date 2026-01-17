@@ -1,0 +1,68 @@
+{% extends 'downloader/base.html' %}
+
+{% block content %}
+<div class="d-flex flex-column justify-content-center align-items-center" style="min-height: 60vh;">
+    <h1 class="display-3 mb-5">AnimeDownloader</h1>
+
+    <form method="get" action="" class="w-100" style="max-width: 600px;">
+        <div class="input-group input-group-lg">
+            <input type="text" name="q" class="form-control rounded-pill" placeholder="Search anime..."
+                value="{{ query|default:'' }}" aria-label="Search anime">
+            <button class="btn btn-primary rounded-pill ms-2 px-4" type="submit">Search</button>
+        </div>
+    </form>
+
+    {% if results %}
+    <style>
+        .result-card {
+            transition: background-color 0.2s;
+        }
+
+        .result-card:hover {
+            background-color: #495057 !important;
+            /* Slightly lighter than bg-secondary */
+        }
+
+        .result-card a:hover {
+            text-decoration: none;
+        }
+    </style>
+    <div class="my-5 w-100" style="max-width: 800px;">
+        <h3>Results</h3>
+        <div class="list-group">
+            {% for result in results %}
+            <div
+                class="list-group-item bg-secondary text-white d-flex justify-content-between align-items-stretch border-0 mb-2 rounded p-0 overflow-hidden result-card">
+                <a href="{{ result.url }}" target="_blank"
+                    class="d-flex align-items-center text-decoration-none text-white flex-grow-1 p-0">
+                    <img src="{{ result.cover_image|default:'https://placehold.co/100x150?text=No+Cover' }}" alt="Cover"
+                        class="rounded-start" style="height: 100px; width: 70px; object-fit: cover;"
+                        onerror="this.onerror=null;this.src='https://placehold.co/100x150?text=No+Cover';">
+                    <div class="ms-3 pe-3">
+                        <h5 class="mb-0">{{ result.title }}</h5>
+                        <small class="text-light text-opacity-75 d-block mt-1">
+                            {{ result.plot|default:"No description available."|truncatechars:280 }}</small>
+                    </div>
+                </a>
+                <form method="post" class="d-flex">
+                    {% csrf_token %}
+                    <input type="hidden" name="url" value="{{ result.url }}">
+                    <input type="hidden" name="title" value="{{ result.title }}">
+                    <input type="hidden" name="cover_image" value="{{ result.cover_image }}">
+                    <input type="hidden" name="plot" value="{{ result.plot }}">
+                    <input type="hidden" name="id" value="{{ result.id }}">
+                    <input type="hidden" name="slug" value="{{ result.slug }}">
+                    <input type="hidden" name="episodes_count" value="{{ result.episodes_count }}">
+                    <button type="submit"
+                        class="btn btn-primary rounded-0 border-0 d-flex align-items-center justify-content-center"
+                        style="width: 50px; height: 100%; transition: background-color 0.2s;" title="Add to Library">
+                        <span style="font-size: 24px;">+</span>
+                    </button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends 'downloader/base.html' %}
+
+{% block content %}
+<h1>{{ anime.title }}</h1>
+<a href="{{ anime.source_url }}" target="_blank" class="text-light">{{ anime.source_url }}</a>
+<hr>
+
+<h3 class="mt-4">Episodes</h3>
+<table class="table table-dark table-striped">
+    <thead>
+        <tr>
+            <th>Number</th>
+            <th>Status</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for episode in episodes %}
+        <tr>
+            <td>Episode {{ episode.number }}</td>
+            <td>
+                {% if episode.status == 'pending' %}
+                <span class="badge bg-secondary">Pending</span>
+                {% elif episode.status == 'downloading' %}
+                <span class="badge bg-info">Downloading</span>
+                {% elif episode.status == 'completed' %}
+                <span class="badge bg-success">Completed</span>
+                {% elif episode.status == 'failed' %}
+                <span class="badge bg-danger">Failed</span>
+                {% endif %}
+            </td>
+            <td>
+                {% if episode.status == 'pending' or episode.status == 'failed' %}
+                <a href="{% url 'download_episode' episode.id %}" class="btn btn-sm btn-primary">Download</a>
+                {% else %}
+                <button class="btn btn-sm btn-secondary" disabled>Download</button>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

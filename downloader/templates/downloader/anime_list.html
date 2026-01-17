@@ -1,0 +1,20 @@
+{% extends 'downloader/base.html' %}
+
+{% block content %}
+<h1 class="mb-4">Anime List</h1>
+<div class="row">
+    {% for anime in animes %}
+    <div class="col-md-4 mb-4">
+        <div class="card bg-secondary text-white">
+            <div class="card-body">
+                <h5 class="card-title">{{ anime.title }}</h5>
+                <p class="card-text">Episodes: {{ anime.episodes.count }}</p>
+                <a href="{% url 'anime_detail' anime.id %}" class="btn btn-primary">View Episodes</a>
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <p>No anime added yet.</p>
+    {% endfor %}
+</div>
+{% endblock %}
