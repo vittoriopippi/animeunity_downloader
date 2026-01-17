@@ -40,9 +40,7 @@ venv.bak/
 .env
 
 # Docker
-.dockerignore
-Dockerfile
-docker-compose.yml
+# (Removed restricted files to allow sharing)
 
 # IDEs
 .vscode/

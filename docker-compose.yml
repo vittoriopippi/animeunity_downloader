@@ -1,0 +1,81 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: anime_db
+    environment:
+      - POSTGRES_DB=anime_db
+      - POSTGRES_USER=anime_user
+      - POSTGRES_PASSWORD=anime_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U anime_user -d anime_db" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: anime_redis
+    ports:
+      - "6379:6379"
+    restart: always
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  web:
+    image: vittoriopippi/animeunity-downloader:latest
+    container_name: anime_web
+    command: >
+      sh -c "python manage.py migrate && 
+             python manage.py createsuperuser --noinput || true && 
+             python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - .:/app
+      - media_volume:/app/media
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=True
+      - REDIS_HOST=redis
+      - DB_HOST=db
+      - DB_NAME=anime_db
+      - DB_USER=anime_user
+      - DB_PASSWORD=anime_pass
+      - DJANGO_SUPERUSER_USERNAME=admin
+      - DJANGO_SUPERUSER_PASSWORD=admin
+      - DJANGO_SUPERUSER_EMAIL=admin@example.com
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+
+  worker:
+    image: vittoriopippi/animeunity-downloader:latest
+    container_name: anime_worker
+    command: celery -A config worker --loglevel=info --concurrency=4
+    volumes:
+      - .:/app
+      - media_volume:/app/media
+    environment:
+      - REDIS_HOST=redis
+      - DB_HOST=db
+      - DB_NAME=anime_db
+      - DB_USER=anime_user
+      - DB_PASSWORD=anime_pass
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+
+volumes:
+  media_volume:
+  postgres_data:
