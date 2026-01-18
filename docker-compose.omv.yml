@@ -35,7 +35,8 @@ services:
              python manage.py createsuperuser --noinput || true && 
              python manage.py runserver 0.0.0.0:8000"
     volumes:
-      - media_volume:/app/media
+      # REPLACE THE PATH BELOW with your OMV Shared Folder path (find it in Storage > Shared Folders)
+      - /srv/dev-disk-by-uuid-YOUR-DISK-ID/SharedFolder/Anime:/app/media
     ports:
       - "8000:8000"
     environment:
@@ -60,7 +61,8 @@ services:
     container_name: anime_worker
     command: celery -A config worker --loglevel=info --concurrency=4
     volumes:
-      - media_volume:/app/media
+      # This MUST match the path used in the 'web' service above
+      - /srv/dev-disk-by-uuid-YOUR-DISK-ID/SharedFolder/Anime:/app/media
     environment:
       - REDIS_HOST=redis
       - DB_HOST=db
@@ -75,5 +77,4 @@ services:
     restart: always
 
 volumes:
-  media_volume:
   postgres_data:
