@@ -19,4 +19,8 @@ urlpatterns = [
     path('api/episode/<int:episode_id>/skip/', views.SkipEpisodeView.as_view(), name='skip_episode'),
     path('api/episode/<int:episode_id>/resume/', views.ResumeEpisodeView.as_view(), name='resume_episode'),
     path('api/episode/<int:episode_id>/retry/', views.ResumeEpisodeView.as_view(), name='retry_episode'),
+
+    # New Search/Download API
+    path('api/search/', views.ApiSearchView.as_view(), name='api_search'),
+    path('api/download/', views.ApiDownloadView.as_view(), name='api_download'),
 ]

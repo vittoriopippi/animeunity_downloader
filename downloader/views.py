@@ -7,6 +7,9 @@ from .tasks import download_episode_task
 from django.db.models import Q
 from django.contrib import messages
 from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
+import json
 
 
 class AnimeSearchView(View):
@@ -233,6 +236,106 @@ class ResumeAnimeView(View):
         
         anime.update_status()
         return JsonResponse({'status': 'ok'})
+
+class ApiSearchView(View):
+    def get(self, request):
+        query = request.GET.get('q')
+        results = []
+        if query:
+            results = search_anime(query)
+        return JsonResponse({'results': results})
+
+@method_decorator(csrf_exempt, name='dispatch')
+class ApiDownloadView(View):
+    def post(self, request):
+        try:
+            data = json.loads(request.body)
+            title_to_match = data.get('title')
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+
+        if not title_to_match:
+            return JsonResponse({'status': 'error', 'message': 'Title is required'}, status=400)
+
+        # 1. Search for the anime
+        results = search_anime(title_to_match)
+        
+        # 2. Find exact match
+        match = None
+        for res in results:
+            if res['title'].lower() == title_to_match.lower():
+                match = res
+                break
+        
+        if not match:
+            return JsonResponse({'status': 'error', 'message': f'No exact match found for "{title_to_match}"'}, status=404)
+
+        # 3. Add to library (reuse logic from AnimeSearchView)
+        url = match['url']
+        title = match['title']
+        cover_image = match['cover_image']
+        plot = match['plot']
+        animeunity_id = match['id']
+        slug = match['slug']
+        episodes_count = match['episodes_count']
+        year = match['year']
+        studio = match['studio']
+
+        try:
+            broker_ok, broker_err = check_broker_status()
+            
+            defaults = {
+                'title': title,
+                'directory_name': clean_filename(title),
+                'cover_image': cover_image,
+                'plot': plot,
+                'slug': slug,
+                'year': year,
+                'studio': studio
+            }
+            if animeunity_id:
+                defaults['animeunity_id'] = animeunity_id
+            
+            anime, created = Anime.objects.update_or_create(
+                source_url=url,
+                defaults=defaults
+            )
+            
+            episodes_urls, genres = get_episode_urls(url)
+            
+            if genres:
+                anime.genres = ",".join(genres)
+                anime.save()
+
+            from .utils import save_anime_metadata
+            save_anime_metadata(anime)
+
+            for ep_num, ep_url in episodes_urls:
+                episode, _ = Episode.objects.get_or_create(
+                    anime=anime,
+                    number=str(ep_num),
+                    defaults={'source_url': ep_url}
+                )
+                if episode.status != 'completed':
+                    episode.status = 'pending'
+                    episode.save()
+            
+            if broker_ok:
+                for ep_num, ep_url in episodes_urls:
+                    episode = Episode.objects.get(anime=anime, number=str(ep_num))
+                    if episode.status == 'pending':
+                        download_episode_task.delay(episode.id)
+            
+            anime.update_status()
+            
+            return JsonResponse({
+                'status': 'ok', 
+                'message': f'Added "{title}" to queue with {len(episodes_urls)} episodes.',
+                'anime_id': anime.id
+            })
+
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 class DeleteAnimeView(View):
     def post(self, request, anime_id):
