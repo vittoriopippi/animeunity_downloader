@@ -27,6 +27,8 @@ class AnimeSearchView(View):
         animeunity_id = request.POST.get('id')
         slug = request.POST.get('slug')
         episodes_count = request.POST.get('episodes_count')
+        year = request.POST.get('year')
+        studio = request.POST.get('studio')
 
         if url:
              # Mock scraping logic from previous Add view
@@ -43,7 +45,9 @@ class AnimeSearchView(View):
                     'directory_name': clean_filename(title),
                     'cover_image': cover_image,
                     'plot': plot,
-                    'slug': slug
+                    'slug': slug,
+                    'year': year,
+                    'studio': studio
                 }
                 if animeunity_id:
                     defaults['animeunity_id'] = animeunity_id
@@ -62,8 +66,16 @@ class AnimeSearchView(View):
                     num_episodes = int(episodes_count)
 
                 # From the url scrape the episode urls with bs4
-                episodes_urls = get_episode_urls(url)
+                episodes_urls, genres = get_episode_urls(url)
                 
+                if genres:
+                    anime.genres = ",".join(genres)
+                    anime.save()
+
+                # Save metadata files (nfo and poster)
+                from .utils import save_anime_metadata
+                save_anime_metadata(anime)
+
                 num_episodes = len(episodes_urls)
 
                 # Create episodes
@@ -123,7 +135,8 @@ class QueueStatusView(View):
                     'id': ep.id,
                     'status': ep.status,
                     'progress': ep.progress,
-                    'number': ep.number
+                    'number': ep.number,
+                    'error_message': ep.error_message
                 })
             data.append({
                 'id': anime.id,
@@ -192,6 +205,7 @@ class ResumeEpisodeView(View):
         episode = get_object_or_404(Episode, pk=episode_id)
         episode.status = 'pending'
         episode.progress = 0
+        episode.error_message = None
         episode.save()
         episode.anime.update_status()
         
@@ -204,14 +218,15 @@ class ResumeEpisodeView(View):
 class ResumeAnimeView(View):
     def post(self, request, anime_id):
         anime = get_object_or_404(Anime, pk=anime_id)
-        # Find all episodes that are either cancelled or skipped
-        episodes_to_resume = anime.episodes.filter(status__in=['cancelled', 'skipped'])
+        # Find all episodes that are either cancelled, skipped or failed
+        episodes_to_resume = anime.episodes.filter(status__in=['cancelled', 'skipped', 'failed'])
         
         broker_ok, _ = check_broker_status()
         
         for episode in episodes_to_resume:
             episode.status = 'pending'
             episode.progress = 0
+            episode.error_message = None
             episode.save()
             if broker_ok:
                 download_episode_task.delay(episode.id)

@@ -15,6 +15,7 @@ def download_episode_task(self, episode_id):
 
         episode.status = 'downloading'
         episode.progress = 0
+        episode.error_message = None  # Clear previous error
         episode.save()
         episode.anime.update_status()
 
@@ -71,6 +72,7 @@ def download_episode_task(self, episode_id):
                 # If fetching/extraction fails
                 print(f"Extraction failed: {e}")
                 episode.status = 'failed'
+                episode.error_message = str(e)
                 episode.save()
                 episode.anime.update_status()
                 return f"Failed: {e}"
@@ -134,6 +136,7 @@ def download_episode_task(self, episode_id):
         try:
              episode = Episode.objects.get(id=episode_id)
              episode.status = 'failed'
+             episode.error_message = str(e)
              episode.save()
              episode.anime.update_status()
         except:

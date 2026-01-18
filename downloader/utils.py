@@ -7,6 +7,7 @@ import urllib.parse
 import json
 import socket
 from django.conf import settings
+from pathlib import Path
 
 def check_broker_status():
     """
@@ -98,7 +99,9 @@ def search_anime(query):
                 'id': record['id'],
                 'slug': record['slug'],
                 'plot': record.get('plot'),
-                'episodes_count': record.get('episodes_count')
+                'episodes_count': record.get('episodes_count'),
+                'year': record.get('date'),
+                'studio': record.get('studio'),
             })
         return results
 
@@ -146,7 +149,18 @@ def get_episode_urls(anime_url):
         soup = BeautifulSoup(resp.text, 'html.parser')
 
         episodes = []
+        genres = []
         
+        # Genres are often in specific tags or script data
+        # From browser research, they are visible on the page.
+        # Let's try to find tags with class 'genre' or similar, or parse from page text.
+        # Often they are in <a> tags inside a specific div.
+        genre_tags = soup.find_all('a', href=re.compile(r'/genre/'))
+        for tag in genre_tags:
+            g = tag.get_text(strip=True)
+            if g and g not in genres:
+                genres.append(g)
+
         # The data is in a <video-player> tag attributes
         player = soup.find('video-player')
         if player:
@@ -188,12 +202,12 @@ def get_episode_urls(anime_url):
         
         episodes.sort(key=sort_key)
         
-        print(f"Found {len(episodes)} episodes.")
-        return episodes
+        print(f"Found {len(episodes)} episodes and genres: {genres}")
+        return episodes, genres
 
     except Exception as e:
         print(f"Error scraping episodes: {e}")
-        return []
+        return [], []
 
 def download_file(url, file_path):
     """
@@ -205,3 +219,46 @@ def download_file(url, file_path):
             for chunk in r.iter_content(chunk_size=8192): 
                 f.write(chunk)
     return file_path
+
+def save_anime_metadata(anime):
+    """
+    Save tvshow.nfo and poster.jpg for the anime.
+    """
+    if not anime.directory_name:
+        anime.directory_name = clean_filename(anime.title)
+        anime.save()
+
+    anime_path = Path(settings.MEDIA_ROOT) / anime.directory_name
+    anime_path.mkdir(parents=True, exist_ok=True)
+
+    # 1. Save tvshow.nfo
+    nfo_path = anime_path / "tvshow.nfo"
+    
+    genres_xml = ""
+    if anime.genres:
+        for g in anime.genres.split(','):
+            genres_xml += f"  <genre>{g.strip()}</genre>\n"
+
+    nfo_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<tvshow>
+  <title>{anime.title}</title>
+  <plot>{anime.plot or ""}</plot>
+  <year>{anime.year or ""}</year>
+{genres_xml}  <studio>{anime.studio or ""}</studio>
+</tvshow>"""
+
+    with open(nfo_path, "w", encoding="utf-8") as f:
+        f.write(nfo_content)
+    
+    # 2. Save poster.jpg
+    if anime.cover_image:
+        poster_path = anime_path / "poster.jpg"
+        try:
+            scraper = cloudscraper.create_scraper()
+            resp = scraper.get(anime.cover_image)
+            resp.raise_for_status()
+            with open(poster_path, 'wb') as f:
+                f.write(resp.content)
+            print(f"Saved poster to {poster_path}")
+        except Exception as e:
+            print(f"Failed to save poster: {e}")

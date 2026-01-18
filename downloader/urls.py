@@ -13,8 +13,10 @@ urlpatterns = [
     path('api/anime/<int:anime_id>/cancel/', views.CancelAnimeView.as_view(), name='cancel_anime'),
     path('api/anime/<int:anime_id>/skip/', views.SkipAnimeView.as_view(), name='skip_anime'),
     path('api/anime/<int:anime_id>/resume/', views.ResumeAnimeView.as_view(), name='resume_anime'),
+    path('api/anime/<int:anime_id>/retry/', views.ResumeAnimeView.as_view(), name='retry_anime'),
     path('api/anime/<int:anime_id>/delete/', views.DeleteAnimeView.as_view(), name='delete_anime'),
     path('api/episode/<int:episode_id>/cancel/', views.CancelEpisodeView.as_view(), name='cancel_episode'),
     path('api/episode/<int:episode_id>/skip/', views.SkipEpisodeView.as_view(), name='skip_episode'),
     path('api/episode/<int:episode_id>/resume/', views.ResumeEpisodeView.as_view(), name='resume_episode'),
+    path('api/episode/<int:episode_id>/retry/', views.ResumeEpisodeView.as_view(), name='retry_episode'),
 ]
