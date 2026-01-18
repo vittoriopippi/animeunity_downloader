@@ -37,7 +37,7 @@ services:
     volumes:
       - media_volume:/app/media
     ports:
-      - "8000:8000"
+      - "8083:8000"
     environment:
       - DEBUG=True
       - REDIS_HOST=redis

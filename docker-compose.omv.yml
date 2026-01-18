@@ -38,7 +38,7 @@ services:
       # REPLACE THE PATH BELOW with your OMV Shared Folder path (find it in Storage > Shared Folders)
       - /srv/dev-disk-by-uuid-YOUR-DISK-ID/SharedFolder/Anime:/app/media
     ports:
-      - "8000:8000"
+      - "8083:8000"
     environment:
       - DEBUG=True
       - REDIS_HOST=redis

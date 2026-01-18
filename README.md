@@ -17,7 +17,7 @@ A Django-based anime downloader for AnimeUnity, designed to be easily deployed v
    ```bash
    docker-compose up -d
    ```
-4. **Access the Web Interface**: Go to `http://your-server-ip:8000`.
+4. **Access the Web Interface**: Go to `http://your-server-ip:8083`.
 
 ## Automated Setup
 The first time you start the stack, it will:
