@@ -5,10 +5,10 @@
     <h1 class="display-3 mb-5">AnimeDownloader</h1>
 
     <form method="get" action="" class="w-100" style="max-width: 600px;">
-        <div class="input-group input-group-lg">
-            <input type="text" name="q" class="form-control rounded-pill" placeholder="Search anime..."
+        <div class="d-flex flex-column flex-sm-row gap-2">
+            <input type="text" name="q" class="form-control form-control-lg rounded-pill" placeholder="Search anime..."
                 value="{{ query|default:'' }}" aria-label="Search anime">
-            <button class="btn btn-primary rounded-pill ms-2 px-4" type="submit">Search</button>
+            <button class="btn btn-primary rounded-pill px-4" type="submit">Search</button>
         </div>
     </form>
 
@@ -38,10 +38,12 @@
                     <img src="{{ result.cover_image|default:'https://placehold.co/100x150?text=No+Cover' }}" alt="Cover"
                         class="rounded-start" style="height: 100px; width: 70px; object-fit: cover;"
                         onerror="this.onerror=null;this.src='https://placehold.co/100x150?text=No+Cover';">
-                    <div class="ms-3 pe-3">
-                        <h5 class="mb-0">{{ result.title }}</h5>
-                        <small class="text-light text-opacity-75 d-block mt-1">
-                            {{ result.plot|default:"No description available."|truncatechars:280 }}</small>
+                    <div class="ms-2 ms-md-3 pe-2 pe-md-3 overflow-hidden d-flex flex-column justify-content-center">
+                        <h5 class="mb-0 text-truncate">{{ result.title }}</h5>
+                        <small class="text-light text-opacity-75 d-none d-sm-block mt-1">
+                            {{ result.plot|default:"No description available."|truncatechars:200 }}</small>
+                        <small class="text-light text-opacity-75 d-block d-sm-none mt-1 small">
+                            {{ result.year|default:"" }} • {{ result.episodes_count|default:"?" }} eps</small>
                     </div>
                 </a>
                 <form method="post" class="d-flex">

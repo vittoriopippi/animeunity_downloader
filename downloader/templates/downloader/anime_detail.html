@@ -1,43 +1,34 @@
 {% extends 'downloader/base.html' %}
 
 {% block content %}
-<h1>{{ anime.title }}</h1>
-<a href="{{ anime.source_url }}" target="_blank" class="text-light">{{ anime.source_url }}</a>
-<hr>
+<div class="mb-4">
+    <h1>{{ anime.title }}</h1>
+    <a href="{{ anime.source_url }}" target="_blank" class="text-light text-opacity-75 small text-break">{{ anime.source_url }}</a>
+</div>
 
-<h3 class="mt-4">Episodes</h3>
-<table class="table table-dark table-striped">
-    <thead>
-        <tr>
-            <th>Number</th>
-            <th>Status</th>
-            <th>Action</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for episode in episodes %}
-        <tr>
-            <td>Episode {{ episode.number }}</td>
-            <td>
-                {% if episode.status == 'pending' %}
-                <span class="badge bg-secondary">Pending</span>
-                {% elif episode.status == 'downloading' %}
-                <span class="badge bg-info">Downloading</span>
-                {% elif episode.status == 'completed' %}
-                <span class="badge bg-success">Completed</span>
-                {% elif episode.status == 'failed' %}
-                <span class="badge bg-danger">Failed</span>
-                {% endif %}
-            </td>
-            <td>
-                {% if episode.status == 'pending' or episode.status == 'failed' %}
-                <a href="{% url 'download_episode' episode.id %}" class="btn btn-sm btn-primary">Download</a>
-                {% else %}
-                <button class="btn btn-sm btn-secondary" disabled>Download</button>
-                {% endif %}
-            </td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+<h3 class="mt-4 mb-3">Episodes</h3>
+<div class="list-group">
+    {% for episode in episodes %}
+    <div class="list-group-item bg-secondary text-white border-0 mb-1 rounded d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-between p-3 p-md-2 gap-2">
+        <span>Episode {{ episode.number }}</span>
+        <div class="d-flex align-items-center gap-2">
+            {% if episode.status == 'pending' %}
+            <span class="badge bg-dark text-white-50">Pending</span>
+            {% elif episode.status == 'downloading' %}
+            <span class="badge bg-warning text-dark">Downloading</span>
+            {% elif episode.status == 'completed' %}
+            <span class="badge bg-success">Completed</span>
+            {% elif episode.status == 'failed' %}
+            <span class="badge bg-danger">Failed</span>
+            {% endif %}
+
+            {% if episode.status == 'pending' or episode.status == 'failed' %}
+            <a href="{% url 'download_episode' episode.id %}" class="btn btn-sm btn-primary px-3">Download</a>
+            {% else %}
+            <button class="btn btn-sm btn-secondary" disabled>Done</button>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
 {% endblock %}

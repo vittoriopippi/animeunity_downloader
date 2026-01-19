@@ -4,14 +4,14 @@
 <style>
     .action-btn {
         width: 75px;
-        height: 24px;
-        font-size: 0.7rem;
+        height: 28px; /* Slightly taller for better touch target */
+        font-size: 0.75rem;
         padding: 0 !important;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         vertical-align: middle;
-        border-radius: 0.375rem; /* Matches Bootstrap progress bar default */
+        border-radius: 0.375rem;
     }
     .action-btn i {
         margin-right: 3px;
@@ -47,7 +47,7 @@
                 <img src="{{ anime.cover_image|default:'https://placehold.co/100x150?text=No+Cover' }}" alt="Cover"
                     class="rounded-start" style="height: 100px; width: 70px; object-fit: cover;"
                     onerror="this.onerror=null;this.src='https://placehold.co/100x150?text=No+Cover';">
-                <div class="ms-3 pe-3 py-2 flex-grow-1 d-flex flex-column justify-content-center">
+                <div class="ms-2 ms-md-3 pe-2 pe-md-3 py-2 flex-grow-1 d-flex flex-column justify-content-center overflow-hidden">
                     <div class="d-flex align-items-center justify-content-between">
                         <div class="d-flex flex-column flex-grow-1">
                             <div class="mb-1 anime-title-container">
@@ -69,16 +69,16 @@
                                     </span>
                                 </h5>
                             </div>
-                            <div class="d-flex align-items-center" id="anime-actions-{{ anime.id }}">
+                            <div class="d-flex flex-wrap gap-1 mt-2" id="anime-actions-{{ anime.id }}">
                                 {% if anime.status == 'pending' or anime.status == 'downloading' %}
-                                <button class="btn btn-sm btn-warning me-2 action-btn" onclick="actionAnime({{ anime.id }}, 'skip', event)" title="Skip remaining">
+                                <button class="btn btn-sm btn-warning action-btn" onclick="actionAnime({{ anime.id }}, 'skip', event)" title="Skip remaining">
                                     <i class="bi bi-skip-forward-fill"></i> Skip
                                 </button>
-                                <button class="btn btn-sm btn-danger me-2 action-btn" onclick="actionAnime({{ anime.id }}, 'cancel', event)" title="Cancel all">
+                                <button class="btn btn-sm btn-danger action-btn" onclick="actionAnime({{ anime.id }}, 'cancel', event)" title="Cancel all">
                                     <i class="bi bi-x-circle-fill"></i> Cancel
                                 </button>
                                 {% elif anime.status == 'cancelled' or anime.status == 'skipped' or anime.status == 'failed' %}
-                                <button class="btn btn-sm btn-success action-btn me-2" onclick="actionAnime({{ anime.id }}, 'resume', event)" title="Resume/Retry all">
+                                <button class="btn btn-sm btn-success action-btn" onclick="actionAnime({{ anime.id }}, 'resume', event)" title="Resume/Retry all">
                                     <i class="bi bi-play-circle-fill"></i> {% if anime.status == 'failed' %}Retry{% else %}Resume{% endif %}
                                 </button>
                                 {% endif %}
@@ -121,7 +121,7 @@
                             </button>
                             {% endif %}
                         </div>
-                        <div id="episode-status-{{ episode.id }}" style="width: 100px; height: 24px;">
+                        <div id="episode-status-{{ episode.id }}" style="width: 100px; height: 28px;">
                             {% if episode.status == 'pending' %}
                             <span class="badge bg-secondary w-100 h-100 d-flex align-items-center justify-content-center">Pending</span>
                             {% elif episode.status == 'downloading' %}
@@ -264,16 +264,16 @@
                         let innerHtml = '';
                         if (anime.status === 'pending' || anime.status === 'downloading') {
                             innerHtml = `
-                                <button class="btn btn-sm btn-warning me-2 action-btn" onclick="actionAnime(${anime.id}, 'skip', event)" title="Skip remaining">
+                                <button class="btn btn-sm btn-warning action-btn" onclick="actionAnime(${anime.id}, 'skip', event)" title="Skip remaining">
                                     <i class="bi bi-skip-forward-fill"></i> Skip
                                 </button>
-                                <button class="btn btn-sm btn-danger me-2 action-btn" onclick="actionAnime(${anime.id}, 'cancel', event)" title="Cancel all">
+                                <button class="btn btn-sm btn-danger action-btn" onclick="actionAnime(${anime.id}, 'cancel', event)" title="Cancel all">
                                     <i class="bi bi-x-circle-fill"></i> Cancel
                                 </button>`;
                         } else if (anime.status === 'cancelled' || anime.status === 'skipped' || anime.status === 'failed') {
                             const btnText = anime.status === 'failed' ? 'Retry' : 'Resume';
                             innerHtml = `
-                                <button class="btn btn-sm btn-success action-btn me-2" onclick="actionAnime(${anime.id}, 'resume', event)" title="${btnText} all">
+                                <button class="btn btn-sm btn-success action-btn" onclick="actionAnime(${anime.id}, 'resume', event)" title="${btnText} all">
                                     <i class="bi bi-play-circle-fill"></i> ${btnText}
                                 </button>`;
                         }
