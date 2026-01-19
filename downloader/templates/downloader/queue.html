@@ -118,19 +118,19 @@
                         <span class="me-auto">Episode {{ episode.number }}</span>
                         <div id="episode-actions-{{ episode.id }}" class="me-3">
                             {% if episode.status == 'pending' %}
-                            <button class="btn btn-sm btn-warning action-btn" onclick="actionEpisode({{ episode.id }}, 'skip')" title="Skip">
+                            <button class="btn btn-sm btn-warning action-btn" onclick="actionEpisode({{ episode.id }}, 'skip', event)" title="Skip">
                                 <i class="bi bi-skip-forward-fill"></i> Skip
                             </button>
                             {% elif episode.status == 'downloading' %}
-                            <button class="btn btn-sm btn-danger action-btn" onclick="actionEpisode({{ episode.id }}, 'cancel')" title="Cancel">
+                            <button class="btn btn-sm btn-danger action-btn" onclick="actionEpisode({{ episode.id }}, 'cancel', event)" title="Cancel">
                                 <i class="bi bi-x-circle-fill"></i> Cancel
                             </button>
                             {% elif episode.status == 'cancelled' or episode.status == 'skipped' %}
-                            <button class="btn btn-sm btn-success action-btn" onclick="actionEpisode({{ episode.id }}, 'resume')" title="Resume">
+                            <button class="btn btn-sm btn-success action-btn" onclick="actionEpisode({{ episode.id }}, 'resume', event)" title="Resume">
                                 <i class="bi bi-play-circle-fill"></i> Resume
                             </button>
                             {% elif episode.status == 'failed' %}
-                            <button class="btn btn-sm btn-success action-btn" onclick="actionEpisode({{ episode.id }}, 'retry')" title="Retry">
+                            <button class="btn btn-sm btn-success action-btn" onclick="actionEpisode({{ episode.id }}, 'retry', event)" title="Retry">
                                 <i class="bi bi-play-circle-fill"></i> Retry
                             </button>
                             {% endif %}
@@ -204,7 +204,10 @@
     }
 
     function actionAnime(id, type, event) {
-        if (event) event.stopPropagation();
+        if (event) {
+            event.stopPropagation();
+            event.preventDefault();
+        }
         // retry uses the same endpoint as resume on the backend, but we keep the name for clarity in UI if needed
         const endpoint = type === 'retry' ? 'resume' : type;
         const url = `/api/anime/${id}/${endpoint}/`;
@@ -214,9 +217,14 @@
                 'X-CSRFToken': getCookie('csrftoken'),
             }
         }).then(() => updateQueue());
+        return false;
     }
 
-    function actionEpisode(id, type) {
+    function actionEpisode(id, type, event) {
+        if (event) {
+            event.stopPropagation();
+            event.preventDefault();
+        }
         // retry uses the same endpoint as resume on the backend
         const endpoint = type === 'retry' ? 'resume' : type;
         const url = `/api/episode/${id}/${endpoint}/`;
@@ -226,10 +234,14 @@
                 'X-CSRFToken': getCookie('csrftoken'),
             }
         }).then(() => updateQueue());
+        return false;
     }
 
     function deleteAnime(id, event) {
-        if (event) event.stopPropagation();
+        if (event) {
+            event.stopPropagation();
+            event.preventDefault();
+        }
         if (!confirm('Are you sure you want to delete this anime and all its files?')) return;
         
         const url = `/api/anime/${id}/delete/`;
@@ -346,7 +358,7 @@
                                 // Update only if it doesn't already show Skip
                                 if (!episodeActions.innerHTML.includes('Skip')) {
                                     episodeActions.innerHTML = `
-                                        <button class="btn btn-sm btn-warning action-btn" onclick="actionEpisode(${episode.id}, 'skip')" title="Skip">
+                                        <button class="btn btn-sm btn-warning action-btn" onclick="actionEpisode(${episode.id}, 'skip', event)" title="Skip">
                                             <i class="bi bi-skip-forward-fill"></i> Skip
                                         </button>`;
                                 }
@@ -354,7 +366,7 @@
                                 // Update only if it doesn't already show Cancel
                                 if (!episodeActions.innerHTML.includes('Cancel')) {
                                     episodeActions.innerHTML = `
-                                        <button class="btn btn-sm btn-danger action-btn" onclick="actionEpisode(${episode.id}, 'cancel')" title="Cancel">
+                                        <button class="btn btn-sm btn-danger action-btn" onclick="actionEpisode(${episode.id}, 'cancel', event)" title="Cancel">
                                             <i class="bi bi-x-circle-fill"></i> Cancel
                                         </button>`;
                                 }
@@ -362,7 +374,7 @@
                                 // Update only if it doesn't already show Resume
                                 if (!episodeActions.innerHTML.includes('Resume')) {
                                     episodeActions.innerHTML = `
-                                        <button class="btn btn-sm btn-success action-btn" onclick="actionEpisode(${episode.id}, 'resume')" title="Resume">
+                                        <button class="btn btn-sm btn-success action-btn" onclick="actionEpisode(${episode.id}, 'resume', event)" title="Resume">
                                             <i class="bi bi-play-circle-fill"></i> Resume
                                         </button>`;
                                 }
@@ -370,7 +382,7 @@
                                 // Update only if it doesn't already show Retry
                                 if (!episodeActions.innerHTML.includes('Retry')) {
                                     episodeActions.innerHTML = `
-                                        <button class="btn btn-sm btn-success action-btn" onclick="actionEpisode(${episode.id}, 'retry')" title="Retry">
+                                        <button class="btn btn-sm btn-success action-btn" onclick="actionEpisode(${episode.id}, 'retry', event)" title="Retry">
                                             <i class="bi bi-play-circle-fill"></i> Retry
                                         </button>`;
                                 }
