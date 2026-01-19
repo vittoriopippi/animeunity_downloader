@@ -12,9 +12,12 @@
         justify-content: center;
         vertical-align: middle;
         border-radius: 0.375rem;
+        position: relative;
+        z-index: 10;
     }
     .action-btn i {
         margin-right: 3px;
+        pointer-events: none;
     }
     .action-btn {
         color: white !important;
@@ -32,6 +35,13 @@
         display: inline-block;
         vertical-align: middle;
     }
+    /* Prevent collapse header from blocking button clicks */
+    .header-card {
+        position: relative;
+    }
+    .header-card [data-bs-toggle="collapse"] {
+        cursor: pointer;
+    }
 </style>
 <div class="d-flex flex-column align-items-center">
     <h2 class="mb-5">Download Queue</h2>
@@ -40,17 +50,19 @@
     <div class="list-group w-100 mx-auto" style="max-width: 800px;">
     {% for anime in animes %}
     <div class="mb-2">
-        <div class="list-group-item bg-secondary text-white border-0 rounded p-0 overflow-hidden result-card header-card"
-            style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#collapse-{{ anime.id }}"
-            aria-expanded="false" aria-controls="collapse-{{ anime.id }}">
+        <div class="list-group-item bg-secondary text-white border-0 rounded p-0 overflow-hidden result-card header-card">
             <div class="d-flex align-items-stretch">
                 <img src="{{ anime.cover_image|default:'https://placehold.co/100x150?text=No+Cover' }}" alt="Cover"
-                    class="rounded-start" style="height: 100px; width: 70px; object-fit: cover;"
-                    onerror="this.onerror=null;this.src='https://placehold.co/100x150?text=No+Cover';">
+                    class="rounded-start" style="height: 100px; width: 70px; object-fit: cover; cursor: pointer;"
+                    onerror="this.onerror=null;this.src='https://placehold.co/100x150?text=No+Cover';"
+                    data-bs-toggle="collapse" data-bs-target="#collapse-{{ anime.id }}"
+                    aria-expanded="false" aria-controls="collapse-{{ anime.id }}">
                 <div class="ms-2 ms-md-3 pe-2 pe-md-3 py-2 flex-grow-1 d-flex flex-column justify-content-center overflow-hidden">
                     <div class="d-flex align-items-center justify-content-between">
                         <div class="d-flex flex-column flex-grow-1">
-                            <div class="mb-1 anime-title-container">
+                            <div class="mb-1 anime-title-container" style="cursor: pointer;"
+                                data-bs-toggle="collapse" data-bs-target="#collapse-{{ anime.id }}"
+                                aria-expanded="false" aria-controls="collapse-{{ anime.id }}">
                                 <h5 class="mb-0">
                                     {{ anime.title }}
                                     <span id="anime-status-{{ anime.id }}" class="anime-status-inline ms-1">
@@ -87,7 +99,9 @@
                                 </button>
                             </div>
                         </div>
-                        <div class="d-flex align-items-center">
+                        <div class="d-flex align-items-center" style="cursor: pointer;"
+                            data-bs-toggle="collapse" data-bs-target="#collapse-{{ anime.id }}"
+                            aria-expanded="false" aria-controls="collapse-{{ anime.id }}">
                             <i class="bi bi-chevron-down text-white-50 ms-3"></i>
                         </div>
                     </div>
