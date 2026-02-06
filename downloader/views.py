@@ -3,7 +3,7 @@ from django.views import View
 from .models import Anime, Episode
 from .forms import AnimeAddForm
 from .utils import get_anime_info_mock, clean_filename, search_anime, get_episode_urls, check_broker_status
-from .tasks import download_episode_task
+from .tasks import download_episode_task, check_for_new_episodes_task, retry_failed_episodes_task
 from django.db.models import Q
 from django.contrib import messages
 from django.http import JsonResponse
@@ -342,3 +342,15 @@ class DeleteAnimeView(View):
         anime = get_object_or_404(Anime, pk=anime_id)
         anime.delete()
         return JsonResponse({'status': 'ok'})
+
+class ManualCheckNewEpisodesView(View):
+    def post(self, request):
+        check_for_new_episodes_task.delay()
+        messages.success(request, "Task to check for new episodes has been queued.")
+        return redirect('search')
+
+class ManualRetryFailedEpisodesView(View):
+    def post(self, request):
+        retry_failed_episodes_task.delay()
+        messages.success(request, "Task to retry failed episodes has been queued.")
+        return redirect('search')

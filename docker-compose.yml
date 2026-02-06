@@ -76,6 +76,25 @@ services:
         condition: service_healthy
     restart: always
 
+  beat:
+    build: .
+    container_name: anime_beat
+    command: celery -A config beat --loglevel=info
+    volumes:
+      - .:/app
+    environment:
+      - REDIS_HOST=redis
+      - DB_HOST=db
+      - DB_NAME=anime_db
+      - DB_USER=anime_user
+      - DB_PASSWORD=anime_pass
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+
 volumes:
   media_volume:
   postgres_data:

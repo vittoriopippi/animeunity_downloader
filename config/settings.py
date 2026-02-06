@@ -113,7 +113,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Europe/Rome'
 
 USE_I18N = True
 
@@ -138,6 +138,19 @@ CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
+
+from celery.schedules import crontab
+
+CELERY_BEAT_SCHEDULE = {
+    'check-for-new-episodes-every-morning': {
+        'task': 'downloader.tasks.check_for_new_episodes_task',
+        'schedule': crontab(hour=4, minute=0),
+    },
+    'retry-failed-episodes-hourly': {
+        'task': 'downloader.tasks.retry_failed_episodes_task',
+        'schedule': crontab(minute=0),
+    },
+}
 
 # Eager mode (sync) only if explicitly enabled via env
 CELERY_TASK_ALWAYS_EAGER = os.environ.get('CELERY_ALWAYS_EAGER', 'False') == 'True'

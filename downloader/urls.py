@@ -23,4 +23,7 @@ urlpatterns = [
     # New Search/Download API
     path('api/search/', views.ApiSearchView.as_view(), name='api_search'),
     path('api/download/', views.ApiDownloadView.as_view(), name='api_download'),
+    # Manual Trigger API/Actions
+    path('manual/check-new/', views.ManualCheckNewEpisodesView.as_view(), name='manual_check_new'),
+    path('manual/retry-failed/', views.ManualRetryFailedEpisodesView.as_view(), name='manual_retry_failed'),
 ]

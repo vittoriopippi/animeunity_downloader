@@ -142,3 +142,54 @@ def download_episode_task(self, episode_id):
         except:
             pass
         return f"Failed: {e}"
+
+@shared_task
+def check_for_new_episodes_task():
+    from .models import Anime, Episode
+    from .utils import get_episode_urls
+    
+    print("Checking for new episodes for all anime...")
+    animes = Anime.objects.all()
+    new_episodes_count = 0
+    
+    for anime in animes:
+        try:
+            print(f"Checking {anime.title}...")
+            # get_episode_urls returns (episodes, genres)
+            episodes_data, _ = get_episode_urls(anime.source_url)
+            
+            for ep_num, ep_url in episodes_data:
+                # Check if episode already exists
+                if not Episode.objects.filter(anime=anime, number=str(ep_num)).exists():
+                    print(f"New episode found for {anime.title}: {ep_num}")
+                    new_ep = Episode.objects.create(
+                        anime=anime,
+                        number=str(ep_num),
+                        source_url=ep_url,
+                        status='pending'
+                    )
+                    download_episode_task.delay(new_ep.id)
+                    new_episodes_count += 1
+            
+            # Update anime status in case all episodes were already completed but status was weird
+            anime.update_status()
+        except Exception as e:
+            print(f"Error checking {anime.title}: {e}")
+            continue
+    
+    return f"Checked {animes.count()} anime. Found and queued {new_episodes_count} new episodes."
+
+@shared_task
+def retry_failed_episodes_task():
+    from .models import Episode
+    
+    failed_episodes = Episode.objects.filter(status='failed')
+    count = failed_episodes.count()
+    
+    print(f"Retrying {count} failed episodes...")
+    for ep in failed_episodes:
+        ep.status = 'pending'
+        ep.save()
+        download_episode_task.delay(ep.id)
+    
+    return f"Retried {count} failed episodes."
