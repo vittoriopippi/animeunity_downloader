@@ -9,6 +9,11 @@ import socket
 from django.conf import settings
 from pathlib import Path
 
+# Seconds; without a timeout a stalled connection blocks forever
+REQUEST_TIMEOUT = 30
+# (connect, read) for video streams; the read timeout applies between received chunks
+DOWNLOAD_TIMEOUT = (15, 120)
+
 def check_broker_status():
     """
     Check if the Redis broker is reachable to avoid blocking on .delay()
@@ -68,7 +73,7 @@ def search_anime(query):
 
     try:
         # 1. Hit homepage for cookies/CSRF
-        resp = scraper.get('https://www.animeunity.so', headers=headers)
+        resp = scraper.get('https://www.animeunity.so', headers=headers, timeout=REQUEST_TIMEOUT)
         resp.raise_for_status()
 
         xsrf_cookie = scraper.cookies.get('XSRF-TOKEN')
@@ -84,7 +89,7 @@ def search_anime(query):
         # 2. Search
         search_url = 'https://www.animeunity.so/livesearch'
         payload = {"title": query}
-        res = scraper.post(search_url, json=payload, headers=headers)
+        res = scraper.post(search_url, json=payload, headers=headers, timeout=REQUEST_TIMEOUT)
         res.raise_for_status()
         
         data = res.json()
@@ -144,7 +149,7 @@ def get_episode_urls(anime_url):
     scraper = cloudscraper.create_scraper()
     print(f"Scraping episodes from: {anime_url}")
     try:
-        resp = scraper.get(anime_url)
+        resp = scraper.get(anime_url, timeout=REQUEST_TIMEOUT)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, 'html.parser')
 
@@ -182,16 +187,26 @@ def get_episode_urls(anime_url):
             if player.get('episodes'):
                 try:
                     episodes_data = json.loads(player['episodes'])
-                    for ep in episodes_data:
-                        # ep is a dict like {"number": "1", ...}
-                        num = ep.get('number')
-                        id = ep.get('id')
-                        if num:
-                            # Construct the watch link: .../ep-{number}
-                            ep_url = f"{base_url}/{id}"
-                            episodes.append((int(num), ep_url))
                 except Exception as e:
                     print(f"Error parsing episodes JSON: {e}")
+                    episodes_data = []
+
+                for ep in episodes_data:
+                    try:
+                        # ep is a dict like {"number": "1", ...}; numbers can also be "12.5" or "OVA"
+                        num = str(ep.get('number') or '').strip()
+                        id = ep.get('id')
+                        if num:
+                            # Plain integers are normalized ("01" -> 1) to match existing episode records
+                            if num.isdigit():
+                                num = int(num)
+                            else:
+                                num = num[:10]  # Episode.number max_length
+                            # Construct the watch link: .../ep-{number}
+                            ep_url = f"{base_url}/{id}"
+                            episodes.append((num, ep_url))
+                    except Exception as e:
+                        print(f"Error parsing episode {ep}: {e}")
 
         # Sort by episode number
         def sort_key(x):
@@ -213,7 +228,7 @@ def download_file(url, file_path):
     """
     Download file from url to file_path with streaming.
     """
-    with requests.get(url, stream=True) as r:
+    with requests.get(url, stream=True, timeout=DOWNLOAD_TIMEOUT) as r:
         r.raise_for_status()
         with open(file_path, 'wb') as f:
             for chunk in r.iter_content(chunk_size=8192): 
@@ -255,7 +270,7 @@ def save_anime_metadata(anime):
         poster_path = anime_path / "poster.jpg"
         try:
             scraper = cloudscraper.create_scraper()
-            resp = scraper.get(anime.cover_image)
+            resp = scraper.get(anime.cover_image, timeout=REQUEST_TIMEOUT)
             resp.raise_for_status()
             with open(poster_path, 'wb') as f:
                 f.write(resp.content)

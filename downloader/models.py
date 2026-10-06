@@ -91,6 +91,10 @@ class Episode(models.Model):
 def anime_delete_files(sender, instance, **kwargs):
     """Delete the anime folder when the Anime object is deleted."""
     if instance.directory_name:
+        # Another anime can end up with the same folder name; never delete its files
+        if Anime.objects.filter(directory_name=instance.directory_name).exclude(pk=instance.pk).exists():
+            print(f"Keeping directory {instance.directory_name}: shared with another anime")
+            return
         anime_path = Path(settings.MEDIA_ROOT) / instance.directory_name
         if anime_path.exists() and anime_path.is_dir():
             print(f"Deleting anime directory: {anime_path}")

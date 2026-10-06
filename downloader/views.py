@@ -89,7 +89,8 @@ class AnimeSearchView(View):
                         defaults={'source_url': ep_url}
                     )
 
-                    if episode.status != 'completed':
+                    # Don't touch an episode that is currently downloading, or a second task would start on the same file
+                    if episode.status not in ('completed', 'downloading'):
                         episode.status = 'pending'
                         episode.save()
                     
@@ -316,7 +317,8 @@ class ApiDownloadView(View):
                     number=str(ep_num),
                     defaults={'source_url': ep_url}
                 )
-                if episode.status != 'completed':
+                # Don't touch an episode that is currently downloading, or a second task would start on the same file
+                if episode.status not in ('completed', 'downloading'):
                     episode.status = 'pending'
                     episode.save()
             
