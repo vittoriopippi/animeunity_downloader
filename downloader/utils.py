@@ -13,6 +13,8 @@ from pathlib import Path
 REQUEST_TIMEOUT = 30
 # (connect, read) for video streams; the read timeout applies between received chunks
 DOWNLOAD_TIMEOUT = (15, 120)
+# Number of episodes AnimeUnity embeds in the anime page and returns per info_api range
+EPISODE_RANGE_SIZE = 120
 
 def check_broker_status():
     """
@@ -184,36 +186,60 @@ def get_episode_urls(anime_url):
                 base_url = anime_url
             
             # 2. Get Episodes
+            episodes_data = []
             if player.get('episodes'):
                 try:
                     episodes_data = json.loads(player['episodes'])
                 except Exception as e:
                     print(f"Error parsing episodes JSON: {e}")
-                    episodes_data = []
 
-                for ep in episodes_data:
-                    try:
-                        # ep is a dict like {"number": "1", ...}; numbers can also be "12.5" or "OVA"
-                        num = str(ep.get('number') or '').strip()
-                        id = ep.get('id')
-                        if num:
-                            # Plain integers are normalized ("01" -> 1) to match existing episode records
-                            if num.isdigit():
-                                num = int(num)
-                            else:
-                                num = num[:10]  # Episode.number max_length
-                            # Construct the watch link: .../ep-{number}
-                            ep_url = f"{base_url}/{id}"
-                            episodes.append((num, ep_url))
-                    except Exception as e:
-                        print(f"Error parsing episode {ep}: {e}")
-
-        # Sort by episode number
-        def sort_key(x):
+            # The page only embeds the first range of episodes (1-120); the rest are
+            # loaded by the site from /info_api/{id}/1?start_range=..&end_range=..
             try:
-                return float(x[0])
-            except:
-                return 0
+                episodes_count = int(anime_data.get('episodes_count') or player.get('episodes_count') or 0)
+            except (TypeError, ValueError):
+                episodes_count = 0
+            if anime_data.get('id') and episodes_count > EPISODE_RANGE_SIZE:
+                host = anime_url.split('//')[1].split('/')[0]
+                for start in range(EPISODE_RANGE_SIZE + 1, episodes_count + 1, EPISODE_RANGE_SIZE):
+                    end = start + EPISODE_RANGE_SIZE - 1
+                    range_url = f"https://{host}/info_api/{anime_data['id']}/1?start_range={start}&end_range={end}"
+                    try:
+                        range_resp = scraper.get(range_url, headers={
+                            'Referer': anime_url,
+                            'X-Requested-With': 'XMLHttpRequest',
+                        }, timeout=REQUEST_TIMEOUT)
+                        range_resp.raise_for_status()
+                        episodes_data.extend(range_resp.json().get('episodes', []))
+                    except Exception as e:
+                        # Keep the episodes found so far; the daily check will pick up the rest later
+                        print(f"Error fetching episodes {start}-{end}: {e}")
+
+            seen_ids = set()
+            for ep in episodes_data:
+                if ep.get('id') in seen_ids:
+                    continue
+                seen_ids.add(ep.get('id'))
+                try:
+                    # ep is a dict like {"number": "1", ...}; numbers can also be "12.5", "1-2" or "OVA"
+                    num = str(ep.get('number') or '').strip()
+                    id = ep.get('id')
+                    if num:
+                        # Plain integers are normalized ("01" -> 1) to match existing episode records
+                        if num.isdigit():
+                            num = int(num)
+                        else:
+                            num = num[:10]  # Episode.number max_length
+                        # Construct the watch link: .../ep-{number}
+                        ep_url = f"{base_url}/{id}"
+                        episodes.append((num, ep_url))
+                except Exception as e:
+                    print(f"Error parsing episode {ep}: {e}")
+
+        # Sort by episode number, using the leading number for labels like "1-2"
+        def sort_key(x):
+            match = re.match(r'\d+(\.\d+)?', str(x[0]))
+            return float(match.group()) if match else 0
         
         episodes.sort(key=sort_key)
         

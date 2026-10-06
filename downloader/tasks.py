@@ -5,6 +5,31 @@ from pathlib import Path
 import cloudscraper
 from bs4 import BeautifulSoup
 from django.conf import settings
+import re
+
+def episode_file_label(episode):
+    """
+    Return (season_dir, episode label) following the Jellyfin/Plex naming conventions:
+    "5" -> S01E05, "1-2" -> S01E01-E02 (multi-episode file),
+    anything else ("14.5", "OVA") -> a special in Season 00.
+    """
+    number = episode.number.strip()
+    if number.isdigit():
+        return "Season 01", f"S01E{int(number):02d}"
+
+    range_match = re.fullmatch(r'(\d+)-(\d+)', number)
+    if range_match:
+        first, last = (int(n) for n in range_match.groups())
+        return "Season 01", f"S01E{first:02d}-E{last:02d}"
+
+    # Specials are numbered in creation order, so an index never changes once assigned
+    # and a newly found special can't take the file name of one already downloaded
+    special_ids = [
+        ep.id for ep in episode.anime.episodes.order_by('id')
+        if not ep.number.strip().isdigit() and not re.fullmatch(r'\d+-\d+', ep.number.strip())
+    ]
+    index = special_ids.index(episode.id) + 1
+    return "Season 00", f"S00E{index:02d} - {clean_filename(number)}"
 
 @shared_task(bind=True)
 def download_episode_task(self, episode_id):
@@ -79,12 +104,7 @@ def download_episode_task(self, episode_id):
 
         # 2. Prepare file path
         anime_title = clean_filename(episode.anime.title)
-        season_dir = "Season 01"
-        if episode.number.isdigit():
-             ep_str = f"S01E{int(episode.number):02d}"
-        else:
-             ep_str = f"S01E{episode.number}"
-             
+        season_dir, ep_str = episode_file_label(episode)
         filename = f"{anime_title} - {ep_str}.mp4"
         
         save_dir = Path(settings.MEDIA_ROOT) / anime_title / season_dir
