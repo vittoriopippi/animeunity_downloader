@@ -155,6 +155,9 @@ CELERY_BEAT_SCHEDULE = {
 # Eager mode (sync) only if explicitly enabled via env
 CELERY_TASK_ALWAYS_EAGER = os.environ.get('CELERY_ALWAYS_EAGER', 'False') == 'True'
 
+# AnimeUnity changes domain from time to time; override without a rebuild via env
+ANIMEUNITY_BASE_URL = os.environ.get('ANIMEUNITY_BASE_URL', 'https://www.animeunity.co').rstrip('/')
+
 # Media Configuration
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'

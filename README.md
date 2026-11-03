@@ -33,3 +33,5 @@ To run locally:
 
 ## Configuration
 Check `docker-compose.yml` for environment variables like `DB_PASSWORD` or `DJANGO_SUPERUSER_PASSWORD` if you want to customize them.
+
+If AnimeUnity moves to a new domain, set `ANIMEUNITY_BASE_URL` (default: `https://www.animeunity.co`) on the `web`, `worker` and `beat` services.

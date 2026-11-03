@@ -16,6 +16,9 @@ DOWNLOAD_TIMEOUT = (15, 120)
 # Number of episodes AnimeUnity embeds in the anime page and returns per info_api range
 EPISODE_RANGE_SIZE = 120
 
+class SearchError(Exception):
+    """AnimeUnity could not be searched, as opposed to a search with no results."""
+
 def check_broker_status():
     """
     Check if the Redis broker is reachable to avoid blocking on .delay()
@@ -68,14 +71,14 @@ def search_anime(query):
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
         'Accept': 'application/json, text/plain, */*',
         'Content-Type': 'application/json;charset=UTF-8',
-        'Origin': 'https://www.animeunity.so',
-        'Referer': 'https://www.animeunity.so/',
+        'Origin': settings.ANIMEUNITY_BASE_URL,
+        'Referer': f'{settings.ANIMEUNITY_BASE_URL}/',
         'X-Requested-With': 'XMLHttpRequest',
     }
 
     try:
         # 1. Hit homepage for cookies/CSRF
-        resp = scraper.get('https://www.animeunity.so', headers=headers, timeout=REQUEST_TIMEOUT)
+        resp = scraper.get(settings.ANIMEUNITY_BASE_URL, headers=headers, timeout=REQUEST_TIMEOUT)
         resp.raise_for_status()
 
         xsrf_cookie = scraper.cookies.get('XSRF-TOKEN')
@@ -89,7 +92,7 @@ def search_anime(query):
             headers['X-CSRF-TOKEN'] = meta_token
 
         # 2. Search
-        search_url = 'https://www.animeunity.so/livesearch'
+        search_url = f'{settings.ANIMEUNITY_BASE_URL}/livesearch'
         payload = {"title": query}
         res = scraper.post(search_url, json=payload, headers=headers, timeout=REQUEST_TIMEOUT)
         res.raise_for_status()
@@ -97,8 +100,8 @@ def search_anime(query):
         data = res.json()
         results = []
         for record in data.get('records', []):
-            # Construct URL: https://www.animeunity.so/anime/ID-SLUG
-            anime_url = f"https://www.animeunity.so/anime/{record['id']}-{record['slug']}"
+            # Construct URL: {base}/anime/ID-SLUG
+            anime_url = f"{settings.ANIMEUNITY_BASE_URL}/anime/{record['id']}-{record['slug']}"
             results.append({
                 'title': record.get('title_eng') or record.get('title') or 'Unknown Title',
                 'url': anime_url,
@@ -114,7 +117,7 @@ def search_anime(query):
 
     except Exception as e:
         print(f"Search failed: {e}")
-        return []
+        raise SearchError(str(e)) from e
 
 def get_anime_info_mock(url):
     """
@@ -181,7 +184,7 @@ def get_episode_urls(anime_url):
             
             # Construct base URL if we have ID and slug, otherwise use provided URL
             if anime_data.get('id') and anime_data.get('slug'):
-                base_url = f"https://www.animeunity.so/anime/{anime_data['id']}-{anime_data['slug']}"
+                base_url = f"{settings.ANIMEUNITY_BASE_URL}/anime/{anime_data['id']}-{anime_data['slug']}"
             else:
                 base_url = anime_url
             

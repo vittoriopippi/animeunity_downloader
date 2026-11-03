@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.views import View
 from .models import Anime, Episode
 from .forms import AnimeAddForm
-from .utils import get_anime_info_mock, clean_filename, search_anime, get_episode_urls, check_broker_status
+from .utils import get_anime_info_mock, clean_filename, search_anime, get_episode_urls, check_broker_status, SearchError
 from .tasks import download_episode_task, check_for_new_episodes_task, retry_failed_episodes_task
 from django.db.models import Q
 from django.contrib import messages
@@ -17,8 +17,11 @@ class AnimeSearchView(View):
         query = request.GET.get('q')
         results = []
         if query:
-            results = search_anime(query)
-        
+            try:
+                results = search_anime(query)
+            except SearchError as e:
+                messages.error(request, f"Could not search AnimeUnity: {e}")
+
         return render(request, 'downloader/search.html', {'results': results, 'query': query})
 
     def post(self, request):
@@ -243,7 +246,10 @@ class ApiSearchView(View):
         query = request.GET.get('q')
         results = []
         if query:
-            results = search_anime(query)
+            try:
+                results = search_anime(query)
+            except SearchError as e:
+                return JsonResponse({'results': [], 'error': str(e)}, status=502)
         return JsonResponse({'results': results})
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -259,8 +265,11 @@ class ApiDownloadView(View):
             return JsonResponse({'status': 'error', 'message': 'Title is required'}, status=400)
 
         # 1. Search for the anime
-        results = search_anime(title_to_match)
-        
+        try:
+            results = search_anime(title_to_match)
+        except SearchError as e:
+            return JsonResponse({'status': 'error', 'message': f'Could not search AnimeUnity: {e}'}, status=502)
+
         # 2. Find exact match
         match = None
         for res in results:
