@@ -2,7 +2,8 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.views import View
 from .models import Anime, Episode
 from .forms import AnimeAddForm
-from .utils import get_anime_info_mock, clean_filename, search_anime, get_episode_urls, check_broker_status, SearchError
+from .utils import (clean_filename, search_anime, get_anime_info, check_broker_status, save_anime_metadata,
+                    language_from_url, SearchError)
 from .tasks import download_episode_task, check_for_new_episodes_task, retry_failed_episodes_task
 from django.db.models import Q
 from django.contrib import messages
@@ -10,6 +11,58 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 import json
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def add_to_library(result):
+    """
+    Add a search result (url, title, cover_image, language) to the library and
+    queue the episodes that aren't downloaded yet.
+    Returns (anime, number of episodes, whether the queue is up).
+    Raises AnimeUnityError if AnimeUnity can't be read; then nothing is saved.
+    """
+    url = result['url']
+    language = result.get('language') or language_from_url(url) or 'jpn'
+    info = get_anime_info(url, language)
+    broker_ok, _ = check_broker_status()
+
+    title = result.get('title') or info['title']
+    # Entries saved before the 2026-11 redesign have an old id and URL until the daily check
+    # updates the id; the folder name still finds them, so nothing is downloaded twice
+    anime = (Anime.objects.filter(animeunity_id=info['id'], language=language).first()
+             or Anime.objects.filter(source_url=url).first()
+             or Anime.objects.filter(directory_name=clean_filename(title), language=language).first())
+    if anime is None:
+        anime = Anime(source_url=url, language=language, title=title, directory_name=clean_filename(title))
+    # An anime already in the library keeps its title and folder, so its files stay where they are
+    anime.animeunity_id = info['id']
+    anime.slug = info['slug']
+    anime.cover_image = result.get('cover_image') or anime.cover_image
+    anime.plot = info['plot'] or anime.plot
+    anime.year = info['year'] or anime.year
+    anime.studio = info['studio'] or anime.studio
+    if info['genres']:
+        anime.genres = ",".join(info['genres'])
+    anime.save()
+    save_anime_metadata(anime)
+
+    for ep_num, ep_url in info['episodes']:
+        episode, _ = Episode.objects.get_or_create(
+            anime=anime,
+            number=str(ep_num),
+            defaults={'source_url': ep_url}
+        )
+        # Don't touch an episode that is currently downloading, or a second task would start on the same file
+        if episode.status not in ('completed', 'downloading'):
+            episode.status = 'pending'
+            episode.save()
+            if broker_ok:
+                download_episode_task.delay(episode.id)
+
+    anime.update_status()
+    return anime, len(info['episodes']), broker_ok
 
 
 class AnimeSearchView(View):
@@ -25,104 +78,21 @@ class AnimeSearchView(View):
         return render(request, 'downloader/search.html', {'results': results, 'query': query})
 
     def post(self, request):
-        # Allow adding from the search result (simulated by passing URL)
-        url = request.POST.get('url')
-        title = request.POST.get('title')
-        cover_image = request.POST.get('cover_image')
-        plot = request.POST.get('plot')
-        animeunity_id = request.POST.get('id')
-        slug = request.POST.get('slug')
-        episodes_count = request.POST.get('episodes_count')
-        year = request.POST.get('year')
-        studio = request.POST.get('studio')
-
-        if url:
-             # Mock scraping logic from previous Add view
+        result = {k: request.POST.get(k) for k in ('url', 'title', 'cover_image', 'language')}
+        if result['url']:
             try:
-                # 1. Check broker status first
-                broker_ok, broker_err = check_broker_status()
-                # broker_ok = True
+                anime, count, broker_ok = add_to_library(result)
                 if not broker_ok:
-                    messages.warning(request, f"Queue service (Redis) is offline. Episodes added to library but downloads won't start automatically.")
-
-                # We trust the search result data for now
-                defaults = {
-                    'title': title,
-                    'directory_name': clean_filename(title),
-                    'cover_image': cover_image,
-                    'plot': plot,
-                    'slug': slug,
-                    'year': year,
-                    'studio': studio
-                }
-                if animeunity_id:
-                    defaults['animeunity_id'] = animeunity_id
-                
-                # Update status based on existence
-                # But initial status is pending.
-                
-                anime, created = Anime.objects.update_or_create(
-                    source_url=url,
-                    defaults=defaults
-                )
-                
-                # Determine how many episodes to create
-                num_episodes = 1
-                if episodes_count and episodes_count.isdigit():
-                    num_episodes = int(episodes_count)
-
-                # From the url scrape the episode urls with bs4
-                episodes_urls, genres = get_episode_urls(url)
-                
-                if genres:
-                    anime.genres = ",".join(genres)
-                    anime.save()
-
-                # Save metadata files (nfo and poster)
-                from .utils import save_anime_metadata
-                save_anime_metadata(anime)
-
-                num_episodes = len(episodes_urls)
-
-                # Create episodes
-                for ep_num, ep_url in episodes_urls:
-                    episode, created = Episode.objects.get_or_create(
-                        anime=anime,
-                        number=str(ep_num),
-                        defaults={'source_url': ep_url}
-                    )
-
-                    # Don't touch an episode that is currently downloading, or a second task would start on the same file
-                    if episode.status not in ('completed', 'downloading'):
-                        episode.status = 'pending'
-                        episode.save()
-                    
-                for ep_num, ep_url in episodes_urls:
-                    episode = Episode.objects.get(anime=anime, number=str(ep_num))
-                    # Trigger download if it's new or pending AND broker is OK
-                    if episode.status == 'pending' and broker_ok:
-                        print(f"Triggering download for episode {episode.number}")
-                        download_episode_task.delay(episode.id)
-                
-                # Update anime status initially
-                anime.update_status()
-
-                messages.success(request, f"Added '{title}' to queue with {num_episodes} episodes.")
-                
-                # Redirect back to search, preserving query if possible
-                query = request.GET.get('q') # Since form action="" commonly preserves GET params in URL, we might grab it?
-                # Actually request.GET might be empty if the form submit didn't include it in action URL explicitly or browser didn't keep it.
-                # But let's check: <form action=""> usually submits to current URL. if current URL is /?q=foo, it submits POST to /?q=foo.
-                # So request.GET['q'] should exist.
+                    messages.warning(request, "Queue service (Redis) is offline. Episodes added to library but downloads won't start automatically.")
+                messages.success(request, f"Added '{anime.title}' to queue with {count} episodes.")
+                # The form posts to the current URL, so the search query is still in it
+                query = request.GET.get('q')
                 if query:
                     return redirect(f'/?q={query}')
                 return redirect('search')
-
             except Exception as e:
-                # In a real app, handle error
-                print(f"Error adding anime: {e}")
+                logger.error("Could not add %s to the library: %s", result['title'], e)
                 messages.error(request, f"Error adding anime: {e}")
-                pass
         return redirect('search')
 
 class QueueView(View):
@@ -280,72 +250,16 @@ class ApiDownloadView(View):
         if not match:
             return JsonResponse({'status': 'error', 'message': f'No exact match found for "{title_to_match}"'}, status=404)
 
-        # 3. Add to library (reuse logic from AnimeSearchView)
-        url = match['url']
-        title = match['title']
-        cover_image = match['cover_image']
-        plot = match['plot']
-        animeunity_id = match['id']
-        slug = match['slug']
-        episodes_count = match['episodes_count']
-        year = match['year']
-        studio = match['studio']
-
+        # 3. Add to library
         try:
-            broker_ok, broker_err = check_broker_status()
-            
-            defaults = {
-                'title': title,
-                'directory_name': clean_filename(title),
-                'cover_image': cover_image,
-                'plot': plot,
-                'slug': slug,
-                'year': year,
-                'studio': studio
-            }
-            if animeunity_id:
-                defaults['animeunity_id'] = animeunity_id
-            
-            anime, created = Anime.objects.update_or_create(
-                source_url=url,
-                defaults=defaults
-            )
-            
-            episodes_urls, genres = get_episode_urls(url)
-            
-            if genres:
-                anime.genres = ",".join(genres)
-                anime.save()
-
-            from .utils import save_anime_metadata
-            save_anime_metadata(anime)
-
-            for ep_num, ep_url in episodes_urls:
-                episode, _ = Episode.objects.get_or_create(
-                    anime=anime,
-                    number=str(ep_num),
-                    defaults={'source_url': ep_url}
-                )
-                # Don't touch an episode that is currently downloading, or a second task would start on the same file
-                if episode.status not in ('completed', 'downloading'):
-                    episode.status = 'pending'
-                    episode.save()
-            
-            if broker_ok:
-                for ep_num, ep_url in episodes_urls:
-                    episode = Episode.objects.get(anime=anime, number=str(ep_num))
-                    if episode.status == 'pending':
-                        download_episode_task.delay(episode.id)
-            
-            anime.update_status()
-            
+            anime, count, _ = add_to_library(match)
             return JsonResponse({
-                'status': 'ok', 
-                'message': f'Added "{title}" to queue with {len(episodes_urls)} episodes.',
+                'status': 'ok',
+                'message': f'Added "{anime.title}" to queue with {count} episodes.',
                 'anime_id': anime.id
             })
-
         except Exception as e:
+            logger.error("Could not add %s to the library: %s", match['title'], e)
             return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 class DeleteAnimeView(View):

@@ -1,11 +1,14 @@
 from celery import shared_task
+from django.db import IntegrityError
 from .models import Episode
-from .utils import download_file, clean_filename, extract_download_url, REQUEST_TIMEOUT, DOWNLOAD_TIMEOUT
+from .utils import clean_filename, get_download_url, AnimeUnityError, DOWNLOAD_TIMEOUT
 from pathlib import Path
 import cloudscraper
-from bs4 import BeautifulSoup
 from django.conf import settings
+import logging
 import re
+
+logger = logging.getLogger(__name__)
 
 def episode_file_label(episode):
     """
@@ -44,58 +47,14 @@ def download_episode_task(self, episode_id):
 
         episode.anime.update_status()
 
-        # 1. Fetch the episode page to get the video URL
-        scraper = cloudscraper.create_scraper()
-
-        # Always extract a fresh video URL: the download links are signed and expire,
-        # so a URL cached by a previous attempt can't be reused on retry
-        print(f"Fetching embed link for: {episode.source_url}")
+        # 1. Always get a fresh video URL: the download links are signed and expire,
+        # so a URL saved by a previous attempt can't be reused on retry
         try:
-            # Based on the old code, we should fetch the embed URL first
-            # The episode ID is the last part of the source_url
-            episode_id_unity = episode.source_url.rstrip('/').split('/')[-1]
-            host = episode.source_url.split('//')[1].split('/')[0]
-            embed_api_url = f"https://{host}/embed-url/{episode_id_unity}"
-
-            # Step A: Get the actual embed URL (e.g. vixcloud)
-            headers = {
-                'Referer': episode.source_url,
-                'X-Requested-With': 'XMLHttpRequest'
-            }
-            resp = scraper.get(embed_api_url, headers=headers, timeout=REQUEST_TIMEOUT)
-            resp.raise_for_status()
-            embed_url = resp.text.strip()
-
-            if not embed_url.startswith('http'):
-                # Fallback or error
-                print(f"Invalid embed URL received: {embed_url}")
-                raise Exception("Could not get valid embed URL")
-
-            # Step B: Fetch the embed page to get the final video URL (window.downloadUrl)
-            print(f"Fetching embed page: {embed_url}")
-            # Vixcloud might need referer too
-            resp = scraper.get(embed_url, headers={'Referer': f"https://{host}/"}, timeout=REQUEST_TIMEOUT)
-            resp.raise_for_status()
-
-            video_url = extract_download_url(resp.text)
-
-            if not video_url:
-                # Try one more time with BeautifulSoup just in case regex on whole text failed
-                soup = BeautifulSoup(resp.text, 'html.parser')
-                for script in soup.find_all('script'):
-                    if script.string:
-                        video_url = extract_download_url(script.string)
-                        if video_url:
-                            break
-
-            if not video_url:
-                raise Exception("Could not extract video URL from embed page")
-
+            video_url = get_download_url(episode.source_url)
             episode.video_url = video_url
             episode.save()
-        except Exception as e:
-            # If fetching/extraction fails
-            print(f"Extraction failed: {e}")
+        except AnimeUnityError as e:
+            logger.error("Could not download %s episode %s: %s", episode.anime.title, episode.number, e)
             episode.status = 'failed'
             episode.error_message = str(e)
             episode.save()
@@ -112,7 +71,8 @@ def download_episode_task(self, episode_id):
         file_path = save_dir / filename
 
         # 3. Download with progress
-        print(f"Downloading to: {file_path}")
+        logger.info("Downloading %s", file_path)
+        scraper = cloudscraper.create_scraper()
         # The read timeout applies per socket read, so a stalled stream fails instead of hanging the worker
         with scraper.get(video_url, stream=True, timeout=DOWNLOAD_TIMEOUT) as r:
             r.raise_for_status()
@@ -131,7 +91,7 @@ def download_episode_task(self, episode_id):
                                 # Refresh from DB to see if status changed (Cancel/Skip)
                                 episode.refresh_from_db()
                                 if episode.status in ['cancelled', 'skipped']:
-                                    print(f"Download {episode.status} for {episode.number}")
+                                    logger.info("Download %s for episode %s", episode.status, episode.number)
                                     f.close()
                                     if file_path.exists():
                                         file_path.unlink()
@@ -151,52 +111,61 @@ def download_episode_task(self, episode_id):
         return f"Downloaded Episode {episode.number}"
 
     except Exception as e:
-        print(f"Error downloading episode {episode_id}: {e}")
         try:
              episode = Episode.objects.get(id=episode_id)
+             logger.error("Could not download %s episode %s: %s", episode.anime.title, episode.number, e)
              episode.status = 'failed'
              episode.error_message = str(e)
              episode.save()
              episode.anime.update_status()
-        except:
-            pass
+        except Exception:
+            logger.error("Could not download episode (database id %s): %s", episode_id, e)
         return f"Failed: {e}"
 
 @shared_task
 def check_for_new_episodes_task():
     from .models import Anime, Episode
-    from .utils import get_episode_urls
-    
-    print("Checking for new episodes for all anime...")
+    from .utils import get_anime_info
+
+    logger.info("Checking all anime for new episodes")
     animes = Anime.objects.all()
     new_episodes_count = 0
-    
+    failed = 0
+
     for anime in animes:
         try:
-            print(f"Checking {anime.title}...")
-            # get_episode_urls returns (episodes, genres)
-            episodes_data, _ = get_episode_urls(anime.source_url)
-            
-            for ep_num, ep_url in episodes_data:
-                # Check if episode already exists
-                if not Episode.objects.filter(anime=anime, number=str(ep_num)).exists():
-                    print(f"New episode found for {anime.title}: {ep_num}")
-                    new_ep = Episode.objects.create(
-                        anime=anime,
-                        number=str(ep_num),
-                        source_url=ep_url,
-                        status='pending'
-                    )
-                    download_episode_task.delay(new_ep.id)
-                    new_episodes_count += 1
-            
-            # Update anime status in case all episodes were already completed but status was weird
-            anime.update_status()
-        except Exception as e:
-            print(f"Error checking {anime.title}: {e}")
+            info = get_anime_info(anime.source_url, anime.language)
+        except AnimeUnityError as e:
+            logger.error("Could not check %s for new episodes: %s", anime.title, e)
+            failed += 1
             continue
-    
-    return f"Checked {animes.count()} anime. Found and queued {new_episodes_count} new episodes."
+
+        # Shows got new ids in AnimeUnity's 2026-11 redesign; keep ours current
+        if anime.animeunity_id != info['id']:
+            anime.animeunity_id = info['id']
+            try:
+                anime.save(update_fields=['animeunity_id'])
+            except IntegrityError:
+                logger.warning("%s: another library entry already has AnimeUnity id %s", anime.title, info['id'])
+                anime.refresh_from_db()
+
+        for ep_num, ep_url in info['episodes']:
+            if not Episode.objects.filter(anime=anime, number=str(ep_num)).exists():
+                logger.info("New episode found for %s: %s", anime.title, ep_num)
+                new_ep = Episode.objects.create(
+                    anime=anime,
+                    number=str(ep_num),
+                    source_url=ep_url,
+                    status='pending'
+                )
+                download_episode_task.delay(new_ep.id)
+                new_episodes_count += 1
+
+        # Update anime status in case all episodes were already completed but status was weird
+        anime.update_status()
+
+    return (f"Checked {animes.count()} anime ({failed} failed). "
+            f"Found and queued {new_episodes_count} new episodes.")
 
 @shared_task
 def retry_failed_episodes_task():
@@ -205,7 +174,7 @@ def retry_failed_episodes_task():
     failed_episodes = Episode.objects.filter(status='failed')
     count = failed_episodes.count()
     
-    print(f"Retrying {count} failed episodes...")
+    logger.info("Retrying %d failed episodes", count)
     for ep in failed_episodes:
         ep.status = 'pending'
         ep.save()

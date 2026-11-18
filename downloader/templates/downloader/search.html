@@ -56,7 +56,7 @@
                     <div class="ms-2 ms-md-3 pe-2 pe-md-3 overflow-hidden d-flex flex-column justify-content-center">
                         <h5 class="mb-0 text-truncate">{{ result.title }}</h5>
                         <small class="text-light text-opacity-75 d-none d-sm-block mt-1">
-                            {{ result.plot|default:"No description available."|truncatechars:200 }}</small>
+                            {% if result.plot %}{{ result.plot|truncatechars:200 }}{% else %}{{ result.year|default:"" }} • {{ result.episodes_count|default:"?" }} eps{% endif %}</small>
                         <small class="text-light text-opacity-75 d-block d-sm-none mt-1 small">
                             {{ result.year|default:"" }} • {{ result.episodes_count|default:"?" }} eps</small>
                     </div>
@@ -66,6 +66,7 @@
                     <input type="hidden" name="url" value="{{ result.url }}">
                     <input type="hidden" name="title" value="{{ result.title }}">
                     <input type="hidden" name="cover_image" value="{{ result.cover_image }}">
+                    <input type="hidden" name="language" value="{{ result.language }}">
                     <input type="hidden" name="plot" value="{{ result.plot }}">
                     <input type="hidden" name="id" value="{{ result.id }}">
                     <input type="hidden" name="slug" value="{{ result.slug }}">

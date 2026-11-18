@@ -155,8 +155,25 @@ CELERY_BEAT_SCHEDULE = {
 # Eager mode (sync) only if explicitly enabled via env
 CELERY_TASK_ALWAYS_EAGER = os.environ.get('CELERY_ALWAYS_EAGER', 'False') == 'True'
 
-# AnimeUnity changes domain from time to time; override without a rebuild via env
+# AnimeUnity changes domain from time to time. Redirects to a new domain are followed;
+# if the old one stops answering, override this via env without a rebuild
 ANIMEUNITY_BASE_URL = os.environ.get('ANIMEUNITY_BASE_URL', 'https://www.animeunity.co').rstrip('/')
+
+# The app's messages go to the container log, problems with level ERROR
+# ("[2026-11-18 01:00:00] ERROR Could not search AnimeUnity ..."), so log monitors can spot them
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'plain': {'format': '[%(asctime)s] %(levelname)s %(message)s', 'datefmt': '%Y-%m-%d %H:%M:%S'},
+    },
+    'handlers': {
+        'console': {'class': 'logging.StreamHandler', 'formatter': 'plain'},
+    },
+    'loggers': {
+        'downloader': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
+    },
+}
 
 # Media Configuration
 MEDIA_URL = '/media/'

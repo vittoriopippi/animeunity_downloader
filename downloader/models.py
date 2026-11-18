@@ -21,7 +21,10 @@ class Anime(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     
     # New metadata
-    animeunity_id = models.IntegerField(null=True, blank=True, unique=True)
+    # Since AnimeUnity's 2026-11 redesign one show holds every language version,
+    # so the same id can appear once per language
+    animeunity_id = models.IntegerField(null=True, blank=True)
+    language = models.CharField(max_length=10, default='jpn')  # "ita" = Italian dub, "jpn" = original
     slug = models.CharField(max_length=255, null=True, blank=True)
     cover_image = models.URLField(null=True, blank=True, max_length=1024)
     plot = models.TextField(null=True, blank=True)
@@ -29,6 +32,9 @@ class Anime(models.Model):
     genres = models.CharField(max_length=255, null=True, blank=True)
     studio = models.CharField(max_length=255, null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+
+    class Meta:
+        unique_together = ('animeunity_id', 'language')
 
     def __str__(self):
         return self.title

@@ -1,22 +1,33 @@
 import requests
-from bs4 import BeautifulSoup
 import re
-import os
 import cloudscraper
 import urllib.parse
 import json
+import html
+import logging
 import socket
+import time
 from django.conf import settings
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Seconds; without a timeout a stalled connection blocks forever
 REQUEST_TIMEOUT = 30
 # (connect, read) for video streams; the read timeout applies between received chunks
 DOWNLOAD_TIMEOUT = (15, 120)
-# Number of episodes AnimeUnity embeds in the anime page and returns per info_api range
-EPISODE_RANGE_SIZE = 120
+# Best first; AnimeUnity answers 404 for a quality an episode doesn't have
+DOWNLOAD_QUALITIES = (1080, 720, 480)
+# How long to remember which domain ANIMEUNITY_BASE_URL redirects to
+SITE_CACHE_SECONDS = 600
+# Safety stop for the paged episode list (120 episodes a page)
+MAX_EPISODE_PAGES = 50
+JSON_HEADERS = {'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest'}
 
-class SearchError(Exception):
+class AnimeUnityError(Exception):
+    """AnimeUnity couldn't be read, or answered in a way this app doesn't understand."""
+
+class SearchError(AnimeUnityError):
     """AnimeUnity could not be searched, as opposed to a search with no results."""
 
 def check_broker_status():
@@ -62,62 +73,204 @@ def extract_download_url(html_content):
         return match.group(1)
     return None
 
+_site = {'origin': None, 'at': 0.0}
+
+def site_origin(scraper):
+    """
+    Scheme and host AnimeUnity answers on now, e.g. "https://animeunity.cx".
+    ANIMEUNITY_BASE_URL may redirect to a newer domain; requests built from it would
+    then be redirected too, and a redirect can turn a request into a different one.
+    """
+    if _site['origin'] and time.time() - _site['at'] < SITE_CACHE_SECONDS:
+        return _site['origin']
+    resp = scraper.get(f'{settings.ANIMEUNITY_BASE_URL}/', timeout=REQUEST_TIMEOUT)
+    resp.raise_for_status()
+    parts = urllib.parse.urlsplit(resp.url)
+    _site.update(origin=f'{parts.scheme}://{parts.netloc}', at=time.time())
+    return _site['origin']
+
+def page_props(html_text):
+    """AnimeUnity pages are Inertia apps: the page's data is JSON in the data-page attribute."""
+    match = re.search(r'data-page="([^"]*)"', html_text)
+    if not match:
+        raise AnimeUnityError('the page has no data-page block (did the site layout change?)')
+    return json.loads(html.unescape(match.group(1))).get('props') or {}
+
+def read_json(resp):
+    resp.raise_for_status()
+    try:
+        return resp.json()
+    except ValueError:
+        raise AnimeUnityError(f'{resp.url} did not answer with JSON')
+
+def display_title(title, language):
+    """The original-language version keeps the plain title; dubs get " (ITA)" etc., as before the 2026-11 redesign."""
+    return title if language == 'jpn' else f'{title} ({language.upper()})'
+
+def anime_page_url(origin, anime_id, slug, language):
+    # The site ignores ?lang; it keeps each language version of a show a separate library entry
+    return f'{origin}/anime/{anime_id}-{slug}?lang={language}'
+
+def language_from_url(url):
+    """Language of a library URL: ?lang=..., or a "-ita" slug from before the 2026-11 redesign."""
+    parts = urllib.parse.urlsplit(url or '')
+    lang = urllib.parse.parse_qs(parts.query).get('lang', [None])[0]
+    if lang:
+        return lang
+    if parts.path.rstrip('/').endswith('-ita'):
+        return 'ita'
+    return None
+
 def search_anime(query):
     """
-    Search anime on AnimeUnity using cloudscraper.
+    Search AnimeUnity. Each language version of a show is its own result.
     """
     scraper = cloudscraper.create_scraper()
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-        'Accept': 'application/json, text/plain, */*',
-        'Content-Type': 'application/json;charset=UTF-8',
-        'Origin': settings.ANIMEUNITY_BASE_URL,
-        'Referer': f'{settings.ANIMEUNITY_BASE_URL}/',
-        'X-Requested-With': 'XMLHttpRequest',
-    }
-
     try:
-        # 1. Hit homepage for cookies/CSRF
-        resp = scraper.get(settings.ANIMEUNITY_BASE_URL, headers=headers, timeout=REQUEST_TIMEOUT)
-        resp.raise_for_status()
+        origin = site_origin(scraper)
+        data = read_json(scraper.get(f'{origin}/api/search', params={'q': query},
+                                     headers=JSON_HEADERS, timeout=REQUEST_TIMEOUT))
+        records = data.get('data')
+        if not isinstance(records, list):
+            raise AnimeUnityError('the search answer has no "data" list (did the API change?)')
+    except Exception as e:
+        logger.error("Could not search AnimeUnity for %r: %s", query, e)
+        raise SearchError(str(e)) from e
 
-        xsrf_cookie = scraper.cookies.get('XSRF-TOKEN')
-        meta_match = re.search(r'<meta name="csrf-token" content="([^"]+)"', resp.text)
-        meta_token = meta_match.group(1) if meta_match else None
-
-        if xsrf_cookie:
-            headers['x-xsrf-token'] = urllib.parse.unquote(xsrf_cookie)
-            headers['x-csrf-token'] = headers['x-xsrf-token']
-        if meta_token:
-            headers['X-CSRF-TOKEN'] = meta_token
-
-        # 2. Search
-        search_url = f'{settings.ANIMEUNITY_BASE_URL}/livesearch'
-        payload = {"title": query}
-        res = scraper.post(search_url, json=payload, headers=headers, timeout=REQUEST_TIMEOUT)
-        res.raise_for_status()
-        
-        data = res.json()
-        results = []
-        for record in data.get('records', []):
-            # Construct URL: {base}/anime/ID-SLUG
-            anime_url = f"{settings.ANIMEUNITY_BASE_URL}/anime/{record['id']}-{record['slug']}"
+    results = []
+    for record in records:
+        images = record.get('images') or {}
+        title = record.get('title') or record.get('title_ja') or 'Unknown Title'
+        variants = record.get('variants') or [{'language': 'jpn', 'episodes_count': record.get('total_episodes')}]
+        for variant in variants:
+            language = variant.get('language') or 'jpn'
             results.append({
-                'title': record.get('title_eng') or record.get('title') or 'Unknown Title',
-                'url': anime_url,
-                'cover_image': record.get('imageurl'),
+                'title': display_title(title, language),
+                'url': anime_page_url(origin, record['id'], record['slug'], language),
+                'cover_image': images.get('poster') or images.get('cover'),
                 'id': record['id'],
                 'slug': record['slug'],
-                'plot': record.get('plot'),
-                'episodes_count': record.get('episodes_count'),
-                'year': record.get('date'),
-                'studio': record.get('studio'),
+                'language': language,
+                'plot': None,  # not in search results; read from the show's page when it's added
+                'episodes_count': variant.get('episodes_count') or record.get('total_episodes'),
+                'year': record.get('year'),
+                'studio': None,
             })
-        return results
+    return results
 
+def episode_label(number):
+    """Plain integers are normalized ("01" -> 1) to match existing episode records."""
+    number = str(number or '').strip()
+    if number.isdigit():
+        return int(number)
+    return number[:10]  # Episode.number max_length; numbers can also be "12.5", "1-2" or "OVA"
+
+def get_anime_info(anime_url, language):
+    """
+    Read a show and its episodes in one language ("ita", "jpn"...).
+    Returns a dict with id, slug, title, plot, year, studio, genres (list) and
+    episodes: a list of (episode number, episode page URL), sorted.
+    Raises AnimeUnityError if AnimeUnity can't be read.
+    """
+    scraper = cloudscraper.create_scraper()
+    try:
+        # Old links (older domains, and the per-language show ids from before the
+        # 2026-11 redesign) redirect to the show's current page
+        resp = scraper.get(anime_url, timeout=REQUEST_TIMEOUT)
+        resp.raise_for_status()
+        anime = page_props(resp.text).get('anime') or {}
+        if not anime.get('id') or not anime.get('slug'):
+            raise AnimeUnityError('no show data on the page (did the site layout change?)')
+        parts = urllib.parse.urlsplit(resp.url)
+        origin = f'{parts.scheme}://{parts.netloc}'
+
+        languages = [v.get('language') for v in anime.get('variants') or []]
+        if languages and language not in languages:
+            raise AnimeUnityError(f'no {language} version of {anime.get("title")} (there is: {", ".join(languages)})')
+
+        # The episode list comes in pages of "tab_size" episodes
+        records = []
+        start = 1
+        for _ in range(MAX_EPISODE_PAGES):
+            page = read_json(scraper.get(f"{origin}/api/anime/{anime['id']}/episodes", params={'start': start},
+                                         headers=JSON_HEADERS, timeout=REQUEST_TIMEOUT))
+            batch = page.get('episodes') or []
+            records.extend(batch)
+            size = int(page.get('tab_size') or len(batch))
+            start += size
+            if not batch or not size or start > int(page.get('total') or 0):
+                break
+    except AnimeUnityError:
+        raise
     except Exception as e:
-        print(f"Search failed: {e}")
-        raise SearchError(str(e)) from e
+        raise AnimeUnityError(str(e)) from e
+
+    episodes = []
+    seen_ids = set()
+    for record in records:
+        if record.get('id') in seen_ids:
+            continue
+        seen_ids.add(record.get('id'))
+        video = next((v for v in record.get('videos') or [] if v.get('language') == language), None)
+        number = episode_label(record.get('number'))
+        if video and number != '':
+            episodes.append((number, f"{origin}/anime/{anime['id']}-{anime['slug']}/{video['id']}"))
+
+    # Sort by episode number, using the leading number for labels like "1-2"
+    def sort_key(x):
+        match = re.match(r'\d+(\.\d+)?', str(x[0]))
+        return float(match.group()) if match else 0
+    episodes.sort(key=sort_key)
+
+    info = {
+        'id': anime['id'],
+        'slug': anime['slug'],
+        'title': anime.get('title'),
+        'plot': anime.get('plot'),
+        'year': str(anime['year']) if anime.get('year') else None,
+        'studio': ', '.join(s['name'] for s in anime.get('studios') or [] if s.get('name')) or None,
+        'genres': [g['name'] for g in anime.get('genres') or [] if g.get('name')],
+        'episodes': episodes,
+    }
+    logger.info("%s (%s): %d episodes", info['title'], language, len(episodes))
+    return info
+
+def get_download_url(episode_url):
+    """
+    Direct MP4 link for one episode, best quality first. The links are signed and
+    expire, so get a fresh one for every download.
+    Raises AnimeUnityError if there's no link.
+    """
+    video_id = urllib.parse.urlsplit(episode_url).path.rstrip('/').split('/')[-1]
+    if not video_id.isdigit():
+        raise AnimeUnityError(f'no video id at the end of {episode_url}')
+    scraper = cloudscraper.create_scraper()
+    try:
+        origin = site_origin(scraper)
+        site_host = urllib.parse.urlsplit(origin).netloc
+        # What the site's DOWNLOAD button does: a redirect to the file on the video host
+        for quality in DOWNLOAD_QUALITIES:
+            resp = scraper.get(f'{origin}/episode-videos/{video_id}/download', params={'quality': quality},
+                               allow_redirects=False, timeout=REQUEST_TIMEOUT)
+            location = resp.headers.get('Location', '')
+            if resp.is_redirect and urllib.parse.urlsplit(location).netloc not in ('', site_host):
+                return location
+
+        # Fallback: the video player's page also carries the link
+        resp = scraper.get(episode_url, timeout=REQUEST_TIMEOUT)
+        resp.raise_for_status()
+        embed_url = page_props(resp.text).get('embedUrl')
+        if embed_url:
+            resp = scraper.get(embed_url, headers={'Referer': f'{origin}/'}, timeout=REQUEST_TIMEOUT)
+            resp.raise_for_status()
+            url = extract_download_url(resp.text)
+            if url:
+                return url
+    except AnimeUnityError:
+        raise
+    except Exception as e:
+        raise AnimeUnityError(str(e)) from e
+    raise AnimeUnityError(f'no download link for video {video_id} (tried the download button and the player)')
 
 def get_anime_info_mock(url):
     """
@@ -145,113 +298,6 @@ def get_video_stream_url_mock(episode_url):
     """
     # TODO: Implement extraction logic
     return "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
-
-def get_episode_urls(anime_url):
-    """
-    Scrape the anime details page to parse the <video-player> tag for episodes.
-    Returns a list of tuples: (episode_number, episode_url)
-    """
-    scraper = cloudscraper.create_scraper()
-    print(f"Scraping episodes from: {anime_url}")
-    try:
-        resp = scraper.get(anime_url, timeout=REQUEST_TIMEOUT)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, 'html.parser')
-
-        episodes = []
-        genres = []
-        
-        # Genres are often in specific tags or script data
-        # From browser research, they are visible on the page.
-        # Let's try to find tags with class 'genre' or similar, or parse from page text.
-        # Often they are in <a> tags inside a specific div.
-        genre_tags = soup.find_all('a', href=re.compile(r'/genre/'))
-        for tag in genre_tags:
-            g = tag.get_text(strip=True)
-            if g and g not in genres:
-                genres.append(g)
-
-        # The data is in a <video-player> tag attributes
-        player = soup.find('video-player')
-        if player:
-            # 1. Get Anime Info for URL construction
-            anime_data = {}
-            if player.get('anime'):
-                try:
-                    anime_data = json.loads(player['anime'])
-                except:
-                    pass
-            
-            # Construct base URL if we have ID and slug, otherwise use provided URL
-            if anime_data.get('id') and anime_data.get('slug'):
-                base_url = f"{settings.ANIMEUNITY_BASE_URL}/anime/{anime_data['id']}-{anime_data['slug']}"
-            else:
-                base_url = anime_url
-            
-            # 2. Get Episodes
-            episodes_data = []
-            if player.get('episodes'):
-                try:
-                    episodes_data = json.loads(player['episodes'])
-                except Exception as e:
-                    print(f"Error parsing episodes JSON: {e}")
-
-            # The page only embeds the first range of episodes (1-120); the rest are
-            # loaded by the site from /info_api/{id}/1?start_range=..&end_range=..
-            try:
-                episodes_count = int(anime_data.get('episodes_count') or player.get('episodes_count') or 0)
-            except (TypeError, ValueError):
-                episodes_count = 0
-            if anime_data.get('id') and episodes_count > EPISODE_RANGE_SIZE:
-                host = anime_url.split('//')[1].split('/')[0]
-                for start in range(EPISODE_RANGE_SIZE + 1, episodes_count + 1, EPISODE_RANGE_SIZE):
-                    end = start + EPISODE_RANGE_SIZE - 1
-                    range_url = f"https://{host}/info_api/{anime_data['id']}/1?start_range={start}&end_range={end}"
-                    try:
-                        range_resp = scraper.get(range_url, headers={
-                            'Referer': anime_url,
-                            'X-Requested-With': 'XMLHttpRequest',
-                        }, timeout=REQUEST_TIMEOUT)
-                        range_resp.raise_for_status()
-                        episodes_data.extend(range_resp.json().get('episodes', []))
-                    except Exception as e:
-                        # Keep the episodes found so far; the daily check will pick up the rest later
-                        print(f"Error fetching episodes {start}-{end}: {e}")
-
-            seen_ids = set()
-            for ep in episodes_data:
-                if ep.get('id') in seen_ids:
-                    continue
-                seen_ids.add(ep.get('id'))
-                try:
-                    # ep is a dict like {"number": "1", ...}; numbers can also be "12.5", "1-2" or "OVA"
-                    num = str(ep.get('number') or '').strip()
-                    id = ep.get('id')
-                    if num:
-                        # Plain integers are normalized ("01" -> 1) to match existing episode records
-                        if num.isdigit():
-                            num = int(num)
-                        else:
-                            num = num[:10]  # Episode.number max_length
-                        # Construct the watch link: .../ep-{number}
-                        ep_url = f"{base_url}/{id}"
-                        episodes.append((num, ep_url))
-                except Exception as e:
-                    print(f"Error parsing episode {ep}: {e}")
-
-        # Sort by episode number, using the leading number for labels like "1-2"
-        def sort_key(x):
-            match = re.match(r'\d+(\.\d+)?', str(x[0]))
-            return float(match.group()) if match else 0
-        
-        episodes.sort(key=sort_key)
-        
-        print(f"Found {len(episodes)} episodes and genres: {genres}")
-        return episodes, genres
-
-    except Exception as e:
-        print(f"Error scraping episodes: {e}")
-        return [], []
 
 def download_file(url, file_path):
     """
@@ -303,6 +349,6 @@ def save_anime_metadata(anime):
             resp.raise_for_status()
             with open(poster_path, 'wb') as f:
                 f.write(resp.content)
-            print(f"Saved poster to {poster_path}")
+            logger.info("Saved poster to %s", poster_path)
         except Exception as e:
-            print(f"Failed to save poster: {e}")
+            logger.warning("Could not save the poster of %s: %s", anime.title, e)

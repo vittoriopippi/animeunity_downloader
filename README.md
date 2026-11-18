@@ -34,4 +34,9 @@ To run locally:
 ## Configuration
 Check `docker-compose.yml` for environment variables like `DB_PASSWORD` or `DJANGO_SUPERUSER_PASSWORD` if you want to customize them.
 
-If AnimeUnity moves to a new domain, set `ANIMEUNITY_BASE_URL` (default: `https://www.animeunity.co`) on the `web`, `worker` and `beat` services.
+If AnimeUnity moves to a new domain, set `ANIMEUNITY_BASE_URL` (default: `https://www.animeunity.co`) on the `web`, `worker` and `beat` services. A redirect from the old domain to the new one is followed by itself.
+
+Since AnimeUnity's November 2026 redesign, one show holds all its language versions. Search lists each version separately: the Italian dub is titled "... (ITA)", as before, and each library entry remembers its language.
+
+## Logs
+Messages go to the container log (`docker logs anime_web`, `docker logs anime_worker`). Problems are logged with level `ERROR`, e.g. `[2026-11-18 01:00:00] ERROR Could not search AnimeUnity for 'naruto': ...`: a failed search, a failed download, or a show that couldn't be checked for new episodes.
