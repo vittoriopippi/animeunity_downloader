@@ -8,3 +8,4 @@ media/
 Dockerfile
 docker-compose.yml
 .dockerignore
+.github/
