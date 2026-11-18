@@ -1,42 +1,32 @@
 {% extends 'downloader/base.html' %}
 
-{% block content %}
-<div class="d-flex flex-column align-items-center">
-    <h2 class="mb-5">Downloaded Library</h2>
+{% block sub %}{{ animes|length }} SHOW{{ animes|length|pluralize:"S" }} DOWNLOADED{% endblock %}
 
-    {% if episodes %}
-    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-4 w-100">
-        {% for episode in episodes %}
-        <div class="col">
-            <div class="card bg-secondary text-white h-100">
-                <div class="card-body">
-                    <h5 class="card-title">{{ episode.anime.title }}</h5>
-                    <h6 class="card-subtitle mb-2 text-warning">Episode {{ episode.number }}</h6>
-                    <p class="card-text small text-truncate">{{ episode.file_path }}</p>
-                    <div class="d-flex justify-content-between align-items-center mt-3">
-                        <span class="badge bg-success">Completed</span>
-                        <small>{{ episode.updated_at|date:"M d" }}</small>
-                    </div>
-                </div>
-                <div class="card-footer bg-transparent border-top-0">
-                    <a href="{% url 'anime_detail' episode.anime.id %}" class="btn btn-outline-light btn-sm w-100">View
-                        Anime</a>
-                </div>
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-    {% else %}
-    <div class="list-group mx-auto w-100" style="max-width: 800px;">
-        <div class="list-group-item bg-secondary text-white border-0 rounded p-5 text-center">
-            <i class="bi bi-collection-play mb-3 d-block" style="font-size: 3rem; color: rgba(255,255,255,0.2);"></i>
-            <h4 class="mb-3">Library is empty</h4>
-            <p class="text-light text-opacity-75 mb-4">You haven't finished any downloads yet. Check the queue to see your progress!</p>
-            <a href="{% url 'queue' %}" class="btn btn-warning px-4 py-2" style="font-weight: 500; color: white !important; border: none !important;">
-                <i class="bi bi-list-task me-2"></i> View Queue
-            </a>
-        </div>
-    </div>
-    {% endif %}
-</div>
+{% block content %}
+<section class="card" style="--c:var(--purple)">
+  <h2>LIBRARY <span class="right">{{ episode_total }} EPISODE{{ episode_total|pluralize:"S" }}</span></h2>
+  {% if animes %}
+  <ul class="shows">
+    {% for anime in animes %}
+    <li>
+      <a class="show" href="{% url 'anime_detail' anime.id %}">
+        <span class="cover">{% if anime.cover_image %}<img src="{{ anime.cover_image }}" alt="" loading="lazy">{% endif %}</span>
+        <span class="show-main">
+          <span class="show-name">{{ anime.title }}</span>
+          <span class="show-sub">{{ anime.done }}/{{ anime.total }} EPISODES · {{ anime.last_done|date:"j M"|upper }}</span>
+          <span class="badges"><span class="badge lang-{{ anime.language }}">{{ anime.language|upper }}</span>{% if anime.done < anime.total %}<span class="badge mute">PARTIAL</span>{% endif %}</span>
+        </span>
+        <svg class="chev" width="8" height="12" viewBox="0 0 4 6" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 0h1v1H0zM1 1h1v1H1zM2 2h1v2H2zM1 4h1v1H1zM0 5h1v1H0z" fill="currentColor"/></svg>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="void">
+    <svg width="48" height="48" viewBox="0 0 12 12" shape-rendering="crispEdges" aria-hidden="true"><path d="M1 2h10v1H1zM1 3h1v7H1zM10 3h1v7h-1zM1 10h10v1H1zM5 5h1v3H5zM6 6h1v1H6z" fill="currentColor"/></svg>
+    <p>NOTHING DOWNLOADED YET.<br>THE QUEUE SHOWS WHAT'S ON ITS WAY.</p>
+    <a class="btn link" href="{% url 'queue' %}">QUEUE</a>
+  </div>
+  {% endif %}
+</section>
 {% endblock %}

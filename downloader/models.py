@@ -39,6 +39,10 @@ class Anime(models.Model):
     def __str__(self):
         return self.title
 
+    @property
+    def genres_text(self):
+        return ", ".join(g.strip() for g in (self.genres or "").split(",") if g.strip())
+
     def update_status(self):
         """Update status based on episodes."""
         episodes = self.episodes.all()
@@ -92,6 +96,12 @@ class Episode(models.Model):
 
     def __str__(self):
         return f"{self.anime.title} - Episode {self.number}"
+
+    @property
+    def label(self):
+        """ "EP 05" for numbered episodes, the name for specials ("OVA", "12.5")."""
+        number = self.number.strip()
+        return f"EP {int(number):02d}" if number.isdigit() else number.upper()
 
 @receiver(pre_delete, sender=Anime)
 def anime_delete_files(sender, instance, **kwargs):

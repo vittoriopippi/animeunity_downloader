@@ -1,402 +1,46 @@
 {% extends 'downloader/base.html' %}
+{% load static %}
+
+{% block sub %}{{ animes|length }} SHOW{{ animes|length|pluralize:"S" }} IN THE QUEUE{% endblock %}
 
 {% block content %}
-<style>
-    .action-btn {
-        width: 75px;
-        height: 28px; /* Slightly taller for better touch target */
-        font-size: 0.75rem;
-        padding: 0 !important;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        vertical-align: middle;
-        border-radius: 0.375rem;
-        position: relative;
-        z-index: 10;
-    }
-    .action-btn i {
-        margin-right: 3px;
-        pointer-events: none;
-    }
-    .action-btn {
-        color: white !important;
-        border: none !important;
-        font-weight: 500;
-        transition: filter 0.2s;
-    }
-    .action-btn:hover {
-        filter: brightness(1.2);
-    }
-    .anime-title-container {
-        display: block;
-    }
-    .anime-status-inline {
-        display: inline-block;
-        vertical-align: middle;
-    }
-    /* Prevent collapse header from blocking button clicks */
-    .header-card {
-        position: relative;
-    }
-    .header-card [data-bs-toggle="collapse"] {
-        cursor: pointer;
-    }
-</style>
-<div class="d-flex flex-column align-items-center">
-    <h2 class="mb-5">Download Queue</h2>
-
-    {% if animes %}
-    <div class="list-group w-100 mx-auto" style="max-width: 800px;">
+<section class="card" style="--c:var(--green)">
+  <h2>DOWNLOAD QUEUE <span class="right" id="queue-count"></span></h2>
+  {% csrf_token %}
+  {% if animes %}
+  <ul class="apps" id="queue">
     {% for anime in animes %}
-    <div class="mb-2">
-        <div class="list-group-item bg-secondary text-white border-0 rounded p-0 overflow-hidden result-card header-card">
-            <div class="d-flex align-items-stretch">
-                <img src="{{ anime.cover_image|default:'https://placehold.co/100x150?text=No+Cover' }}" alt="Cover"
-                    class="rounded-start" style="height: 100px; width: 70px; object-fit: cover; cursor: pointer;"
-                    onerror="this.onerror=null;this.src='https://placehold.co/100x150?text=No+Cover';"
-                    data-bs-toggle="collapse" data-bs-target="#collapse-{{ anime.id }}"
-                    aria-expanded="false" aria-controls="collapse-{{ anime.id }}">
-                <div class="ms-2 ms-md-3 pe-2 pe-md-3 py-2 flex-grow-1 d-flex flex-column justify-content-center overflow-hidden">
-                    <div class="d-flex align-items-center justify-content-between">
-                        <div class="d-flex flex-column flex-grow-1">
-                            <div class="mb-1 anime-title-container" style="cursor: pointer;"
-                                data-bs-toggle="collapse" data-bs-target="#collapse-{{ anime.id }}"
-                                aria-expanded="false" aria-controls="collapse-{{ anime.id }}">
-                                <h5 class="mb-0">
-                                    {{ anime.title }}
-                                    <span id="anime-status-{{ anime.id }}" class="anime-status-inline ms-1">
-                                        {% if anime.status == 'pending' %}
-                                        <span class="badge bg-dark text-white-50">Pending</span>
-                                        {% elif anime.status == 'downloading' %}
-                                        <span class="badge bg-warning text-dark spinner-border spinner-border-sm"
-                                            role="status"></span>
-                                        {% elif anime.status == 'completed' %}
-                                        <span class="badge bg-success">Completed</span>
-                                        {% elif anime.status == 'skipped' %}
-                                        <span class="badge bg-secondary">Skipped</span>
-                                        {% elif anime.status == 'cancelled' %}
-                                        <span class="badge bg-danger">Cancelled</span>
-                                        {% endif %}
-                                    </span>
-                                </h5>
-                            </div>
-                            <div class="d-flex flex-wrap gap-1 mt-2" id="anime-actions-{{ anime.id }}">
-                                {% if anime.status == 'pending' or anime.status == 'downloading' %}
-                                <button class="btn btn-sm btn-warning action-btn" onclick="actionAnime({{ anime.id }}, 'skip', event)" title="Skip remaining">
-                                    <i class="bi bi-skip-forward-fill"></i> Skip
-                                </button>
-                                <button class="btn btn-sm btn-danger action-btn" onclick="actionAnime({{ anime.id }}, 'cancel', event)" title="Cancel all">
-                                    <i class="bi bi-x-circle-fill"></i> Cancel
-                                </button>
-                                {% elif anime.status == 'cancelled' or anime.status == 'skipped' or anime.status == 'failed' %}
-                                <button class="btn btn-sm btn-success action-btn" onclick="actionAnime({{ anime.id }}, 'resume', event)" title="Resume/Retry all">
-                                    <i class="bi bi-play-circle-fill"></i> {% if anime.status == 'failed' %}Retry{% else %}Resume{% endif %}
-                                </button>
-                                {% endif %}
-                                <button class="btn btn-sm btn-danger action-btn" onclick="deleteAnime({{ anime.id }}, event)" title="Delete from Library">
-                                    <i class="bi bi-trash-fill"></i> Delete
-                                </button>
-                            </div>
-                        </div>
-                        <div class="d-flex align-items-center" style="cursor: pointer;"
-                            data-bs-toggle="collapse" data-bs-target="#collapse-{{ anime.id }}"
-                            aria-expanded="false" aria-controls="collapse-{{ anime.id }}">
-                            <i class="bi bi-chevron-down text-white-50 ms-3"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="collapse mt-1" id="collapse-{{ anime.id }}">
-            <div class="py-2 card card-body bg-dark text-white border-secondary">
-                {% if anime.episodes.all %}
-                <ul class="list-group list-group-flush bg-transparent">
-                    {% for episode in anime.episodes.all %}
-                    <li class="list-group-item bg-transparent text-white border-secondary d-flex align-items-center px-0">
-                        <span class="me-auto">Episode {{ episode.number }}</span>
-                        <div id="episode-actions-{{ episode.id }}" class="me-3">
-                            {% if episode.status == 'pending' %}
-                            <button class="btn btn-sm btn-warning action-btn" onclick="actionEpisode({{ episode.id }}, 'skip', event)" title="Skip">
-                                <i class="bi bi-skip-forward-fill"></i> Skip
-                            </button>
-                            {% elif episode.status == 'downloading' %}
-                            <button class="btn btn-sm btn-danger action-btn" onclick="actionEpisode({{ episode.id }}, 'cancel', event)" title="Cancel">
-                                <i class="bi bi-x-circle-fill"></i> Cancel
-                            </button>
-                            {% elif episode.status == 'cancelled' or episode.status == 'skipped' %}
-                            <button class="btn btn-sm btn-success action-btn" onclick="actionEpisode({{ episode.id }}, 'resume', event)" title="Resume">
-                                <i class="bi bi-play-circle-fill"></i> Resume
-                            </button>
-                            {% elif episode.status == 'failed' %}
-                            <button class="btn btn-sm btn-success action-btn" onclick="actionEpisode({{ episode.id }}, 'retry', event)" title="Retry">
-                                <i class="bi bi-play-circle-fill"></i> Retry
-                            </button>
-                            {% endif %}
-                        </div>
-                        <div id="episode-status-{{ episode.id }}" style="width: 100px; height: 28px;">
-                            {% if episode.status == 'pending' %}
-                            <span class="badge bg-secondary w-100 h-100 d-flex align-items-center justify-content-center">Pending</span>
-                            {% elif episode.status == 'downloading' %}
-                            <div class="progress w-100 h-100 position-relative" style="background-color: #111 !important;">
-                                <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"
-                                    style="width: {{ episode.progress }}%;" aria-valuenow="{{ episode.progress }}"
-                                    aria-valuemin="0" aria-valuemax="100">
-                                </div>
-                                <div class="position-absolute w-100 h-100 d-flex align-items-center justify-content-center"
-                                    style="top: 0; left: 0; font-size: 0.75rem; font-weight: 700; color: white; pointer-events: none;">
-                                    {{ episode.progress }}%
-                                </div>
-                            </div>
-                            {% elif episode.status == 'completed' %}
-                            <span class="badge bg-success w-100 h-100 d-flex align-items-center justify-content-center">Completed</span>
-                            {% elif episode.status == 'skipped' %}
-                            <span class="badge bg-secondary w-100 h-100 d-flex align-items-center justify-content-center">Skipped</span>
-                            {% elif episode.status == 'cancelled' %}
-                            <span class="badge bg-danger w-100 h-100 d-flex align-items-center justify-content-center">Cancelled</span>
-                            {% else %}
-                            <span class="badge bg-danger w-100 h-100 d-flex align-items-center justify-content-center" 
-                                  {% if episode.error_message %}title="{{ episode.error_message }}" data-bs-toggle="tooltip"{% endif %}>
-                                Failed
-                            </span>
-                            {% endif %}
-                        </div>
-                    </li>
-                    {% endfor %}
-                </ul>
-                {% else %}
-                <p class="text-muted mb-0">No episodes found.</p>
-                {% endif %}
-            </div>
-        </div>
-    </div>
+    <li class="app st-{{ anime.status }}" id="anime-{{ anime.id }}" data-id="{{ anime.id }}">
+      <button class="app-head" type="button" data-act="toggle" aria-expanded="false">
+        <span class="led" data-f="led"></span>
+        <span class="cover">{% if anime.cover_image %}<img src="{{ anime.cover_image }}" alt="" loading="lazy">{% endif %}</span>
+        <span class="app-main">
+          <span class="app-name">{{ anime.title }}</span>
+          <span class="app-sub" data-f="sub">&nbsp;</span>
+          <span class="badges" data-f="badges"></span>
+        </span>
+        <svg class="chev" width="8" height="12" viewBox="0 0 4 6" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 0h1v1H0zM1 1h1v1H1zM2 2h1v2H2zM1 4h1v1H1zM0 5h1v1H0z" fill="currentColor"/></svg>
+      </button>
+      <div class="app-body" hidden>
+        <div class="meter" data-f="meter"></div>
+        <div class="actions" data-f="actions"></div>
+        <ul class="eps" data-f="eps"></ul>
+      </div>
+    </li>
     {% endfor %}
-</div>
-{% else %}
-<div class="list-group w-100 mx-auto" style="max-width: 800px;">
-    <div class="list-group-item bg-secondary text-white border-0 rounded p-5 text-center">
-        <i class="bi bi-cloud-slash mb-3 d-block" style="font-size: 3rem; color: rgba(255,255,255,0.2);"></i>
-        <h4 class="mb-3">Queue is empty</h4>
-        <p class="text-light text-opacity-75 mb-4">Your library is currently empty. Start adding some anime to begin downloading!</p>
-        <a href="{% url 'search' %}" class="btn btn-warning px-4 py-2" style="font-weight: 500; color: white !important; border: none !important;">
-            <i class="bi bi-search me-2"></i> Search for Anime
-        </a>
-    </div>
-</div>
-{% endif %}
-</div>
+  </ul>
+  {% else %}
+  <div class="void">
+    <svg width="48" height="48" viewBox="0 0 12 12" shape-rendering="crispEdges" aria-hidden="true"><path d="M2 1h8v1H2zM1 2h1v8H1zM10 2h1v8h-1zM2 10h8v1H2zM4 4h1v1H4zM7 4h1v1H7zM4 7h4v1H4z" fill="currentColor"/></svg>
+    <p>THE QUEUE IS EMPTY.<br>SEARCH FOR A SHOW AND PRESS + TO ADD IT.</p>
+    <a class="btn link" href="{% url 'search' %}">SEARCH</a>
+  </div>
+  {% endif %}
+</section>
+{{ queue|json_script:"queue-data" }}
+{% endblock %}
 
-<script>
-    function getCookie(name) {
-        let cookieValue = null;
-        if (document.cookie && document.cookie !== '') {
-            const cookies = document.cookie.split(';');
-            for (let i = 0; i < cookies.length; i++) {
-                const cookie = cookies[i].trim();
-                if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                    break;
-                }
-            }
-        }
-        return cookieValue;
-    }
-
-    function actionAnime(id, type, event) {
-        if (event) {
-            event.stopPropagation();
-            event.preventDefault();
-        }
-        // retry uses the same endpoint as resume on the backend, but we keep the name for clarity in UI if needed
-        const endpoint = type === 'retry' ? 'resume' : type;
-        const url = `/api/anime/${id}/${endpoint}/`;
-        fetch(url, {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': getCookie('csrftoken'),
-            }
-        }).then(() => updateQueue());
-        return false;
-    }
-
-    function actionEpisode(id, type, event) {
-        if (event) {
-            event.stopPropagation();
-            event.preventDefault();
-        }
-        // retry uses the same endpoint as resume on the backend
-        const endpoint = type === 'retry' ? 'resume' : type;
-        const url = `/api/episode/${id}/${endpoint}/`;
-        fetch(url, {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': getCookie('csrftoken'),
-            }
-        }).then(() => updateQueue());
-        return false;
-    }
-
-    function deleteAnime(id, event) {
-        if (event) {
-            event.stopPropagation();
-            event.preventDefault();
-        }
-        if (!confirm('Are you sure you want to delete this anime and all its files?')) return;
-        
-        const url = `/api/anime/${id}/delete/`;
-        fetch(url, {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': getCookie('csrftoken'),
-            }
-        }).then(() => {
-            // Remove the element from the DOM immediately
-            const animeElement = document.getElementById(`collapse-${id}`).closest('.mb-2');
-            if (animeElement) {
-                animeElement.remove();
-            }
-        });
-    }
-
-    function updateQueue() {
-        fetch('{% url "queue_status" %}')
-            .then(response => response.json())
-            .then(data => {
-                data.animes.forEach(anime => {
-                    // Update anime status badge
-                    const animeStatusContainer = document.getElementById(`anime-status-${anime.id}`);
-                    if (animeStatusContainer) {
-                        let badgeHtml = '';
-                        if (anime.status === 'pending') {
-                            badgeHtml = '<span class="badge bg-dark text-white-50">Pending</span>';
-                        } else if (anime.status === 'downloading') {
-                            badgeHtml = '<span class="badge bg-warning text-dark spinner-border spinner-border-sm" role="status"></span>';
-                        } else if (anime.status === 'completed') {
-                            badgeHtml = '<span class="badge bg-success">Completed</span>';
-                        } else if (anime.status === 'skipped') {
-                            badgeHtml = '<span class="badge bg-secondary">Skipped</span>';
-                        } else if (anime.status === 'cancelled') {
-                            badgeHtml = '<span class="badge bg-danger">Cancelled</span>';
-                        } else if (anime.status === 'failed') {
-                            badgeHtml = '<span class="badge bg-danger">Failed</span>';
-                        }
-                        animeStatusContainer.innerHTML = badgeHtml;
-                    }
-
-                    // Show/Hide anime level buttons
-                    const animeActions = document.getElementById(`anime-actions-${anime.id}`);
-                    if (animeActions) {
-                        let innerHtml = '';
-                        if (anime.status === 'pending' || anime.status === 'downloading') {
-                            innerHtml = `
-                                <button class="btn btn-sm btn-warning action-btn" onclick="actionAnime(${anime.id}, 'skip', event)" title="Skip remaining">
-                                    <i class="bi bi-skip-forward-fill"></i> Skip
-                                </button>
-                                <button class="btn btn-sm btn-danger action-btn" onclick="actionAnime(${anime.id}, 'cancel', event)" title="Cancel all">
-                                    <i class="bi bi-x-circle-fill"></i> Cancel
-                                </button>`;
-                        } else if (anime.status === 'cancelled' || anime.status === 'skipped' || anime.status === 'failed') {
-                            const btnText = anime.status === 'failed' ? 'Retry' : 'Resume';
-                            innerHtml = `
-                                <button class="btn btn-sm btn-success action-btn" onclick="actionAnime(${anime.id}, 'resume', event)" title="${btnText} all">
-                                    <i class="bi bi-play-circle-fill"></i> ${btnText}
-                                </button>`;
-                        }
-                        
-                        // Always include Delete button for every status
-                        innerHtml += `
-                            <button class="btn btn-sm btn-danger action-btn" onclick="deleteAnime(${anime.id}, event)" title="Delete from Library">
-                                <i class="bi bi-trash-fill"></i> Delete
-                            </button>`;
-                        
-                        animeActions.innerHTML = innerHtml;
-                    }
-
-                    // Update episode status/progress
-                    anime.episodes.forEach(episode => {
-                        const episodeStatusContainer = document.getElementById(`episode-status-${episode.id}`);
-                        if (episodeStatusContainer) {
-                            let statusHtml = '';
-                            if (episode.status === 'pending') {
-                                statusHtml = '<span class="badge bg-secondary w-100 h-100 d-flex align-items-center justify-content-center">Pending</span>';
-                            } else if (episode.status === 'downloading') {
-                                statusHtml = `
-                                    <div class="progress w-100 h-100 position-relative" style="background-color: #111 !important;">
-                                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"
-                                            style="width: ${episode.progress}%;" aria-valuenow="${episode.progress}"
-                                            aria-valuemin="0" aria-valuemax="100">
-                                        </div>
-                                        <div class="position-absolute w-100 h-100 d-flex align-items-center justify-content-center"
-                                            style="top: 0; left: 0; font-size: 0.75rem; font-weight: 700; color: white; pointer-events: none;">
-                                            ${episode.progress}%
-                                        </div>
-                                    </div>`;
-                            } else if (episode.status === 'completed') {
-                                statusHtml = '<span class="badge bg-success w-100 h-100 d-flex align-items-center justify-content-center">Completed</span>';
-                            } else if (episode.status === 'skipped') {
-                                statusHtml = '<span class="badge bg-secondary w-100 h-100 d-flex align-items-center justify-content-center">Skipped</span>';
-                            } else if (episode.status === 'cancelled') {
-                                statusHtml = '<span class="badge bg-danger w-100 h-100 d-flex align-items-center justify-content-center">Cancelled</span>';
-                            } else {
-                                const errorAttr = episode.error_message ? `title="${episode.error_message}" data-bs-toggle="tooltip"` : '';
-                                statusHtml = `<span class="badge bg-danger w-100 h-100 d-flex align-items-center justify-content-center" ${errorAttr}>Failed</span>`;
-                            }
-                            episodeStatusContainer.innerHTML = statusHtml;
-                            
-                            // Re-initialize tooltips if needed
-                            if (episode.status === 'failed' && episode.error_message) {
-                                const badge = episodeStatusContainer.querySelector('[data-bs-toggle="tooltip"]');
-                                if (badge) new bootstrap.Tooltip(badge);
-                            }
-                        }
-
-                        // Show/Hide episode actions
-                        const episodeActions = document.getElementById(`episode-actions-${episode.id}`);
-                        if (episodeActions) {
-                            if (episode.status === 'pending') {
-                                // Update only if it doesn't already show Skip
-                                if (!episodeActions.innerHTML.includes('Skip')) {
-                                    episodeActions.innerHTML = `
-                                        <button class="btn btn-sm btn-warning action-btn" onclick="actionEpisode(${episode.id}, 'skip', event)" title="Skip">
-                                            <i class="bi bi-skip-forward-fill"></i> Skip
-                                        </button>`;
-                                }
-                            } else if (episode.status === 'downloading') {
-                                // Update only if it doesn't already show Cancel
-                                if (!episodeActions.innerHTML.includes('Cancel')) {
-                                    episodeActions.innerHTML = `
-                                        <button class="btn btn-sm btn-danger action-btn" onclick="actionEpisode(${episode.id}, 'cancel', event)" title="Cancel">
-                                            <i class="bi bi-x-circle-fill"></i> Cancel
-                                        </button>`;
-                                }
-                            } else if (episode.status === 'cancelled' || episode.status === 'skipped') {
-                                // Update only if it doesn't already show Resume
-                                if (!episodeActions.innerHTML.includes('Resume')) {
-                                    episodeActions.innerHTML = `
-                                        <button class="btn btn-sm btn-success action-btn" onclick="actionEpisode(${episode.id}, 'resume', event)" title="Resume">
-                                            <i class="bi bi-play-circle-fill"></i> Resume
-                                        </button>`;
-                                }
-                            } else if (episode.status === 'failed') {
-                                // Update only if it doesn't already show Retry
-                                if (!episodeActions.innerHTML.includes('Retry')) {
-                                    episodeActions.innerHTML = `
-                                        <button class="btn btn-sm btn-success action-btn" onclick="actionEpisode(${episode.id}, 'retry', event)" title="Retry">
-                                            <i class="bi bi-play-circle-fill"></i> Retry
-                                        </button>`;
-                                }
-                            } else {
-                                episodeActions.innerHTML = '';
-                            }
-                        }
-                    });
-                });
-            })
-            .catch(error => console.error('Error fetching queue status:', error));
-    }
-
-    // Refresh every 3 seconds
-    setInterval(updateQueue, 3000);
-</script>
+{% block scripts %}
+<script>window.QUEUE_STATUS_URL = "{% url 'queue_status' %}";</script>
+<script src="{% static 'downloader/queue.js' %}"></script>
 {% endblock %}

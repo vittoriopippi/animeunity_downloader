@@ -1,20 +1,24 @@
 {% extends 'downloader/base.html' %}
 
 {% block content %}
-<h1 class="mb-4">Anime List</h1>
-<div class="row">
+<section class="card" style="--c:var(--purple)">
+  <h2>ANIME LIST</h2>
+  {% if animes %}
+  <ul class="shows">
     {% for anime in animes %}
-    <div class="col-md-4 mb-4">
-        <div class="card bg-secondary text-white">
-            <div class="card-body">
-                <h5 class="card-title">{{ anime.title }}</h5>
-                <p class="card-text">Episodes: {{ anime.episodes.count }}</p>
-                <a href="{% url 'anime_detail' anime.id %}" class="btn btn-primary">View Episodes</a>
-            </div>
-        </div>
-    </div>
-    {% empty %}
-    <p>No anime added yet.</p>
+    <li>
+      <a class="show" href="{% url 'anime_detail' anime.id %}">
+        <span class="cover">{% if anime.cover_image %}<img src="{{ anime.cover_image }}" alt="" loading="lazy">{% endif %}</span>
+        <span class="show-main">
+          <span class="show-name">{{ anime.title }}</span>
+          <span class="show-sub">{{ anime.episodes.count }} EPISODES</span>
+        </span>
+      </a>
+    </li>
     {% endfor %}
-</div>
+  </ul>
+  {% else %}
+  <p class="empty">NO ANIME ADDED YET.</p>
+  {% endif %}
+</section>
 {% endblock %}

@@ -1,68 +1,56 @@
-<!doctype html>
-<html lang="en" data-bs-theme="dark">
-
+{% load static %}<!doctype html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <title>Anime Downloader</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
-  <style>
-    :root {
-      --bs-body-bg: #121212;
-    }
-    body {
-      -webkit-tap-highlight-color: transparent;
-    }
-    .btn {
-      touch-action: manipulation;
-    }
-    /* Better scrolling on mobile */
-    .container {
-      padding-left: 1rem;
-      padding-right: 1rem;
-    }
-    @media (max-width: 576px) {
-      h1, .display-3 { font-size: 2.5rem; }
-      h2 { font-size: 1.75rem; }
-    }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0c0b1d">
+<meta name="color-scheme" content="dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ANIME DL">
+<meta name="format-detection" content="telephone=no">
+<link rel="icon" href="{% static 'downloader/icons/favicon.svg' %}" type="image/svg+xml">
+<link rel="apple-touch-icon" href="{% static 'downloader/icons/icon-180.png' %}">
+<link rel="preload" href="{% static 'downloader/fonts/PressStart2P-Regular.ttf' %}" as="font" type="font/ttf" crossorigin>
+<link rel="preload" href="{% static 'downloader/fonts/VT323-Regular.ttf' %}" as="font" type="font/ttf" crossorigin>
+<link rel="stylesheet" href="{% static 'downloader/pixel.css' %}">
+<title>{% block title %}ANIME DL{% endblock %}</title>
 </head>
-
-<body class="bg-dark text-light">
-  <nav class="navbar navbar-expand-lg navbar-dark bg-secondary mb-4 shadow-sm">
-    <div class="container">
-      <a class="navbar-brand fw-bold" href="{% url 'search' %}">AnimeDownloader</a>
-      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-        <span class="navbar-toggler-icon"></span>
-      </button>
-      <div class="collapse navbar-collapse" id="navbarNav">
-        <ul class="navbar-nav ms-auto">
-          <li class="nav-item">
-            <a class="nav-link" href="{% url 'search' %}">Search</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="{% url 'queue' %}">Queue</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="{% url 'downloaded' %}">Downloaded</a>
-          </li>
-        </ul>
-      </div>
-    </div>
-  </nav>
-  <div class="container">
-    {% if messages %}
+<body>
+<div class="crt" aria-hidden="true"></div>
+{% with page=request.resolver_match.url_name %}
+<header class="top">
+  <div class="top-in">
+    <a class="brand" href="{% url 'search' %}">
+      <span class="logo">{% include 'downloader/logo.svg' %}</span>
+      <span class="brand-text">
+        <h1>ANIME DL<span class="cursor">_</span></h1>
+        <span class="sub" id="sub">{% block sub %}ANIMEUNITY DOWNLOADER{% endblock %}</span>
+      </span>
+    </a>
+    <nav class="nav">
+      <a class="tab{% if page == 'search' %} on{% endif %}" href="{% url 'search' %}">SEARCH</a>
+      <a class="tab{% if page == 'queue' %} on{% endif %}" href="{% url 'queue' %}">QUEUE</a>
+      <a class="tab{% if page == 'downloaded' or page == 'anime_detail' %} on{% endif %}" href="{% url 'downloaded' %}">LIBRARY</a>
+    </nav>
+  </div>
+</header>
+{% endwith %}
+<main>
+  {% if messages %}
+  <section class="alerts">
     {% for message in messages %}
-    <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show" role="alert">
-      {{ message }}
-      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    <div class="alert {{ message.level_tag }}" role="status">
+      <svg width="12" height="16" viewBox="0 0 3 4" shape-rendering="crispEdges" aria-hidden="true"><path d="M1 0h1v2H1zM1 3h1v1H1z" fill="currentColor"/></svg>
+      <span>{{ message }}</span>
     </div>
     {% endfor %}
-    {% endif %}
-    {% block content %}{% endblock %}
-  </div>
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  </section>
+  {% endif %}
+  {% block content %}{% endblock %}
+</main>
+<script src="{% static 'downloader/pixel.js' %}"></script>
+{% block scripts %}{% endblock %}
 </body>
-
 </html>

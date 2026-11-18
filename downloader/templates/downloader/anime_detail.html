@@ -1,34 +1,56 @@
 {% extends 'downloader/base.html' %}
 
+{% block title %}{{ anime.title }} · ANIME DL{% endblock %}
+{% block sub %}{{ done }}/{{ episodes|length }} EPISODES DOWNLOADED{% endblock %}
+
 {% block content %}
-<div class="mb-4">
-    <h1>{{ anime.title }}</h1>
-    <a href="{{ anime.source_url }}" target="_blank" class="text-light text-opacity-75 small text-break">{{ anime.source_url }}</a>
-</div>
-
-<h3 class="mt-4 mb-3">Episodes</h3>
-<div class="list-group">
-    {% for episode in episodes %}
-    <div class="list-group-item bg-secondary text-white border-0 mb-1 rounded d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-between p-3 p-md-2 gap-2">
-        <span>Episode {{ episode.number }}</span>
-        <div class="d-flex align-items-center gap-2">
-            {% if episode.status == 'pending' %}
-            <span class="badge bg-dark text-white-50">Pending</span>
-            {% elif episode.status == 'downloading' %}
-            <span class="badge bg-warning text-dark">Downloading</span>
-            {% elif episode.status == 'completed' %}
-            <span class="badge bg-success">Completed</span>
-            {% elif episode.status == 'failed' %}
-            <span class="badge bg-danger">Failed</span>
-            {% endif %}
-
-            {% if episode.status == 'pending' or episode.status == 'failed' %}
-            <a href="{% url 'download_episode' episode.id %}" class="btn btn-sm btn-primary px-3">Download</a>
-            {% else %}
-            <button class="btn btn-sm btn-secondary" disabled>Done</button>
-            {% endif %}
-        </div>
+<section class="card" style="--c:var(--yellow)">
+  <div class="detail-head">
+    <span class="cover big">{% if anime.cover_image %}<img src="{{ anime.cover_image }}" alt="">{% endif %}</span>
+    <div class="show-main">
+      <span class="show-name">{{ anime.title }}</span>
+      <span class="badges">
+        <span class="badge lang-{{ anime.language }}">{{ anime.language|upper }}</span>
+        {% if anime.status == 'completed' %}<span class="badge">ALL DONE</span>{% elif anime.status == 'failed' %}<span class="badge err">FAILED</span>{% elif anime.status == 'downloading' %}<span class="badge dl">DL</span>{% endif %}
+      </span>
+      <dl class="meta">
+        {% if anime.year %}<div><dt>YEAR</dt><dd>{{ anime.year }}</dd></div>{% endif %}
+        {% if anime.studio %}<div><dt>STUDIO</dt><dd>{{ anime.studio }}</dd></div>{% endif %}
+        {% if anime.genres %}<div><dt>GENRES</dt><dd>{{ anime.genres_text }}</dd></div>{% endif %}
+      </dl>
     </div>
+  </div>
+  {% if anime.plot %}<p class="plot">{{ anime.plot|truncatechars:420 }}</p>{% endif %}
+  <dl class="meta" style="margin-top:16px">
+    <div><dt>FOLDER</dt><dd>{{ anime.directory_name }}</dd></div>
+    <div><dt>SOURCE</dt><dd><a href="{{ anime.source_url }}" target="_blank" rel="noopener">{{ anime.source_url }}</a></dd></div>
+  </dl>
+</section>
+
+<section class="card" style="--c:var(--green)">
+  <h2>EPISODES <span class="right">{{ episodes|length }}</span></h2>
+  {% if episodes %}
+  <ul class="eps" style="margin-top:0">
+    {% for episode in episodes %}
+    <li class="ep st-{{ episode.status }}">
+      <span class="ep-n">{{ episode.label }}</span>
+      <span class="ep-st">
+        {% if episode.status == 'completed' %}<span class="pill done">DONE</span>
+        {% elif episode.status == 'downloading' %}<span class="pill dl">{{ episode.progress }}%</span>
+        {% elif episode.status == 'failed' %}<span class="pill fail">FAILED</span>
+        {% elif episode.status == 'skipped' %}<span class="pill skip">SKIPPED</span>
+        {% elif episode.status == 'cancelled' %}<span class="pill stop">CANCELLED</span>
+        {% else %}<span class="pill wait">WAITING</span>{% endif %}
+      </span>
+      {% if episode.status == 'pending' or episode.status == 'failed' %}
+      <a class="mini go" href="{% url 'download_episode' episode.id %}">DOWNLOAD</a>
+      {% endif %}
+      {% if episode.status == 'failed' and episode.error_message %}<div class="ep-err">{{ episode.error_message }}</div>{% endif %}
+    </li>
     {% endfor %}
-</div>
+  </ul>
+  {% else %}
+  <p class="empty">NO EPISODES.</p>
+  {% endif %}
+</section>
 {% endblock %}

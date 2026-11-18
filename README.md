@@ -8,6 +8,14 @@ A Django-based anime downloader for AnimeUnity, designed to be easily deployed v
 - **Real-time Updates**: Status updates without page refreshes.
 - **Reliable Networking**: PostgreSQL + Redis stack for high stability.
 - **Multi-container Architecture**: Web, Worker (Celery), Redis, and database separated for performance.
+- **8-bit Interface**: Pixel-art look, made for phones (it can be added to the iPhone home screen). No CDN: fonts, styles and icons are served by the app itself.
+
+## Interface
+- **SEARCH**: find a show and press **+** to add it. Every language version is listed (ITA = Italian dub, JPN = original with subtitles).
+- **QUEUE**: one row per show with a status light; tap it for the progress meter, the episodes and SKIP / CANCEL / RESUME / DELETE. CANCEL and DELETE need a second tap ("SURE?"). It refreshes every 3 seconds.
+- **LIBRARY**: the downloaded shows; tap one for its details and episode list.
+
+The fonts are Press Start 2P and VT323 (SIL Open Font License, licences in `downloader/static/downloader/fonts/`). The pixel icons come from `tools/make_icons.py`.
 
 ## Fast Deployment (OMV / Docker Compose)
 

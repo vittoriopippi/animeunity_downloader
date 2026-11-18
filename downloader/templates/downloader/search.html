@@ -1,88 +1,57 @@
 {% extends 'downloader/base.html' %}
 
 {% block content %}
-<div class="d-flex flex-column justify-content-center align-items-center" style="min-height: 60vh;">
-    <h1 class="display-3 mb-5">AnimeDownloader</h1>
-
-    <div class="d-flex gap-3 mb-4">
-        <form method="post" action="{% url 'manual_check_new' %}">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-outline-info rounded-pill px-4">
-                <i class="bi bi-arrow-repeat me-1"></i> Check New Episodes
-            </button>
-        </form>
-        <form method="post" action="{% url 'manual_retry_failed' %}">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-outline-warning rounded-pill px-4">
-                <i class="bi bi-arrow-clockwise me-1"></i> Retry Failed
-            </button>
-        </form>
-    </div>
-
-    <form method="get" action="" class="w-100" style="max-width: 600px;">
-        <div class="d-flex flex-column flex-sm-row gap-2">
-            <input type="text" name="q" class="form-control form-control-lg rounded-pill text-white" placeholder="Search anime..."
-                value="{{ query|default:'' }}" aria-label="Search anime">
-            <button class="btn btn-primary rounded-pill px-4" type="submit">Search</button>
-        </div>
+<section class="card" style="--c:var(--blue)">
+  <h2>SEARCH ANIMEUNITY</h2>
+  <form method="get" action="{% url 'search' %}" class="search" role="search">
+    <input type="search" name="q" value="{{ query|default:'' }}" placeholder="Title..." aria-label="Anime title"
+      autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+    <button class="btn go" type="submit">FIND</button>
+  </form>
+  <div class="actions">
+    <form method="post" action="{% url 'manual_check_new' %}">
+      {% csrf_token %}
+      <button class="btn cool" type="submit">CHECK NEW EPS</button>
     </form>
+    <form method="post" action="{% url 'manual_retry_failed' %}">
+      {% csrf_token %}
+      <button class="btn warm" type="submit">RETRY FAILED</button>
+    </form>
+  </div>
+</section>
 
-    {% if results %}
-    <style>
-        .result-card {
-            transition: background-color 0.2s;
-        }
-
-        .result-card:hover {
-            background-color: #495057 !important;
-            /* Slightly lighter than bg-secondary */
-        }
-
-        .result-card a:hover {
-            text-decoration: none;
-        }
-    </style>
-    <div class="my-5 w-100" style="max-width: 800px;">
-        <h3>Results</h3>
-        <div class="list-group">
-            {% for result in results %}
-            <div
-                class="list-group-item bg-secondary text-white d-flex justify-content-between align-items-stretch border-0 mb-2 rounded p-0 overflow-hidden result-card">
-                <a href="{{ result.url }}" target="_blank"
-                    class="d-flex align-items-center text-decoration-none text-white flex-grow-1 p-0">
-                    <img src="{{ result.cover_image|default:'https://placehold.co/100x150?text=No+Cover' }}" alt="Cover"
-                        class="rounded-start" style="height: 100px; width: 70px; object-fit: cover;"
-                        onerror="this.onerror=null;this.src='https://placehold.co/100x150?text=No+Cover';">
-                    <div class="ms-2 ms-md-3 pe-2 pe-md-3 overflow-hidden d-flex flex-column justify-content-center">
-                        <h5 class="mb-0 text-truncate">{{ result.title }}</h5>
-                        <small class="text-light text-opacity-75 d-none d-sm-block mt-1">
-                            {% if result.plot %}{{ result.plot|truncatechars:200 }}{% else %}{{ result.year|default:"" }} • {{ result.episodes_count|default:"?" }} eps{% endif %}</small>
-                        <small class="text-light text-opacity-75 d-block d-sm-none mt-1 small">
-                            {{ result.year|default:"" }} • {{ result.episodes_count|default:"?" }} eps</small>
-                    </div>
-                </a>
-                <form method="post" class="d-flex">
-                    {% csrf_token %}
-                    <input type="hidden" name="url" value="{{ result.url }}">
-                    <input type="hidden" name="title" value="{{ result.title }}">
-                    <input type="hidden" name="cover_image" value="{{ result.cover_image }}">
-                    <input type="hidden" name="language" value="{{ result.language }}">
-                    <input type="hidden" name="plot" value="{{ result.plot }}">
-                    <input type="hidden" name="id" value="{{ result.id }}">
-                    <input type="hidden" name="slug" value="{{ result.slug }}">
-                    <input type="hidden" name="episodes_count" value="{{ result.episodes_count }}">
-                    <input type="hidden" name="year" value="{{ result.year }}">
-                    <input type="hidden" name="studio" value="{{ result.studio }}">
-                    <button type="submit"
-                        class="btn btn-primary rounded-0 border-0 d-flex align-items-center justify-content-center"
-                        style="width: 50px; height: 100%; transition: background-color 0.2s;" title="Add to Library">
-                        <span style="font-size: 24px;">+</span>
-                    </button>
-                </form>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-    {% endif %}
-</div>
+{% if query %}
+<section class="card" style="--c:var(--yellow)">
+  <h2>RESULTS <span class="right">{% if not search_failed %}{{ results|length }} FOUND{% endif %}</span></h2>
+  {% if results %}
+  <ul class="shows">
+    {% for result in results %}
+    <li class="show">
+      <a class="cover" href="{{ result.url }}" target="_blank" rel="noopener" aria-label="Open on AnimeUnity">
+        {% if result.cover_image %}<img src="{{ result.cover_image }}" alt="" loading="lazy">{% endif %}
+      </a>
+      <div class="show-main">
+        <a class="show-name" href="{{ result.url }}" target="_blank" rel="noopener">{{ result.title }}</a>
+        <span class="show-sub">{% if result.year %}{{ result.year }} · {% endif %}{{ result.episodes_count|default:"?" }} EPISODES</span>
+        <span class="badges"><span class="badge lang-{{ result.language }}">{{ result.language|upper }}</span></span>
+      </div>
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="url" value="{{ result.url }}">
+        <input type="hidden" name="title" value="{{ result.title }}">
+        <input type="hidden" name="cover_image" value="{{ result.cover_image|default:'' }}">
+        <input type="hidden" name="language" value="{{ result.language }}">
+        <button class="btn go add" type="submit" title="Add to the library" aria-label="Add {{ result.title }} to the library">+</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="hint">+ ADDS THE SHOW AND DOWNLOADS EVERY EPISODE. ITA = ITALIAN DUB, JPN = ORIGINAL WITH SUBTITLES.</p>
+  {% elif search_failed %}
+  <p class="empty">ANIMEUNITY DIDN'T ANSWER. TRY AGAIN IN A MINUTE.</p>
+  {% else %}
+  <p class="empty">NOTHING FOUND FOR "{{ query }}". TRY ANOTHER TITLE.</p>
+  {% endif %}
+</section>
+{% endif %}
 {% endblock %}

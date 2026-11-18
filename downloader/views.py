@@ -5,7 +5,7 @@ from .forms import AnimeAddForm
 from .utils import (clean_filename, search_anime, get_anime_info, check_broker_status, save_anime_metadata,
                     language_from_url, SearchError)
 from .tasks import download_episode_task, check_for_new_episodes_task, retry_failed_episodes_task
-from django.db.models import Q
+from django.db.models import Q, Count, Max
 from django.contrib import messages
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -67,15 +67,18 @@ def add_to_library(result):
 
 class AnimeSearchView(View):
     def get(self, request):
-        query = request.GET.get('q')
+        query = (request.GET.get('q') or '').strip()
         results = []
+        search_failed = False
         if query:
             try:
                 results = search_anime(query)
             except SearchError as e:
+                search_failed = True
                 messages.error(request, f"Could not search AnimeUnity: {e}")
 
-        return render(request, 'downloader/search.html', {'results': results, 'query': query})
+        return render(request, 'downloader/search.html',
+                      {'results': results, 'query': query, 'search_failed': search_failed})
 
     def post(self, request):
         result = {k: request.POST.get(k) for k in ('url', 'title', 'cover_image', 'language')}
@@ -95,45 +98,50 @@ class AnimeSearchView(View):
                 messages.error(request, f"Error adding anime: {e}")
         return redirect('search')
 
+def queue_status(animes):
+    """What the queue page shows and refreshes every few seconds."""
+    return {'animes': [{
+        'id': anime.id,
+        'status': anime.status,
+        'language': anime.language,
+        'episodes': [{
+            'id': ep.id,
+            'status': ep.status,
+            'progress': ep.progress,
+            'number': ep.number,
+            'error_message': ep.error_message,
+        } for ep in anime.episodes.all()],
+    } for anime in animes]}
+
 class QueueView(View):
     def get(self, request):
         # Show all anime in the database with their episodes
-        animes = Anime.objects.all().prefetch_related('episodes').order_by('-created_at')
-        return render(request, 'downloader/queue.html', {'animes': animes})
+        animes = list(Anime.objects.all().prefetch_related('episodes').order_by('-created_at'))
+        return render(request, 'downloader/queue.html', {'animes': animes, 'queue': queue_status(animes)})
 
 class QueueStatusView(View):
     def get(self, request):
         animes = Anime.objects.all().prefetch_related('episodes').order_by('-created_at')
-        data = []
-        for anime in animes:
-            episodes = []
-            for ep in anime.episodes.all():
-                episodes.append({
-                    'id': ep.id,
-                    'status': ep.status,
-                    'progress': ep.progress,
-                    'number': ep.number,
-                    'error_message': ep.error_message
-                })
-            data.append({
-                'id': anime.id,
-                'status': anime.status,
-                'episodes': episodes
-            })
-        return JsonResponse({'animes': data})
+        return JsonResponse(queue_status(animes))
 
 class DownloadedView(View):
     def get(self, request):
-        # Completed episodes
-        # Maybe group by Anime? For now just list them
-        episodes = Episode.objects.filter(status='completed').order_by('-updated_at')
-        return render(request, 'downloader/downloaded.html', {'episodes': episodes})
+        # One row per show with at least one downloaded episode, latest download first
+        done = Q(episodes__status='completed')
+        animes = (Anime.objects
+                  .annotate(done=Count('episodes', filter=done), total=Count('episodes'),
+                            last_done=Max('episodes__updated_at', filter=done))
+                  .filter(done__gt=0)
+                  .order_by('-last_done'))
+        return render(request, 'downloader/downloaded.html',
+                      {'animes': animes, 'episode_total': sum(a.done for a in animes)})
 
-class AnimeDetailView(View): 
+class AnimeDetailView(View):
     def get(self, request, anime_id):
         anime = get_object_or_404(Anime, pk=anime_id)
-        episodes = anime.episodes.all().order_by('id') 
-        return render(request, 'downloader/anime_detail.html', {'anime': anime, 'episodes': episodes})
+        episodes = list(anime.episodes.all().order_by('id'))
+        done = sum(1 for ep in episodes if ep.status == 'completed')
+        return render(request, 'downloader/anime_detail.html', {'anime': anime, 'episodes': episodes, 'done': done})
 
 def download_episode_view(request, episode_id):
     broker_ok, broker_err = check_broker_status()
