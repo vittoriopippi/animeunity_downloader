@@ -7,36 +7,20 @@
 <section class="card" style="--c:var(--green)">
   <h2>DOWNLOAD QUEUE <span class="right" id="queue-count"></span></h2>
   {% csrf_token %}
-  {% if animes %}
   <ul class="apps" id="queue">
-    {% for anime in animes %}
-    <li class="app st-{{ anime.status }}" id="anime-{{ anime.id }}" data-id="{{ anime.id }}">
-      <button class="app-head" type="button" data-act="toggle" aria-expanded="false">
-        <span class="led" data-f="led"></span>
-        <span class="cover">{% if anime.cover_image %}<img src="{{ anime.cover_image }}" alt="" loading="lazy">{% endif %}</span>
-        <span class="app-main">
-          <span class="app-name">{{ anime.title }}</span>
-          <span class="app-sub" data-f="sub">&nbsp;</span>
-          <span class="badges" data-f="badges"></span>
-        </span>
-        <svg class="chev" width="8" height="12" viewBox="0 0 4 6" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 0h1v1H0zM1 1h1v1H1zM2 2h1v2H2zM1 4h1v1H1zM0 5h1v1H0z" fill="currentColor"/></svg>
-      </button>
-      <div class="app-body" hidden>
-        <div class="meter" data-f="meter"></div>
-        <div class="actions" data-f="actions"></div>
-        <ul class="eps" data-f="eps"></ul>
-      </div>
-    </li>
-    {% endfor %}
+    {% for anime in animes %}{% include 'downloader/queue_row.html' %}{% endfor %}
   </ul>
-  {% else %}
-  <div class="void">
+  {# Also shown by queue.js when the last show finishes while the page is open #}
+  <div class="void" id="queue-empty"{% if animes %} hidden{% endif %}>
     <svg width="48" height="48" viewBox="0 0 12 12" shape-rendering="crispEdges" aria-hidden="true"><path d="M2 1h8v1H2zM1 2h1v8H1zM10 2h1v8h-1zM2 10h8v1H2zM4 4h1v1H4zM7 4h1v1H7zM4 7h4v1H4z" fill="currentColor"/></svg>
-    <p>THE QUEUE IS EMPTY.<br>SEARCH FOR A SHOW AND PRESS + TO ADD IT.</p>
-    <a class="btn link" href="{% url 'search' %}">SEARCH</a>
+    <p>THE QUEUE IS EMPTY.<br>FINISHED SHOWS ARE IN THE LIBRARY.</p>
+    <div class="actions">
+      <a class="btn link" href="{% url 'search' %}">SEARCH</a>
+      <a class="btn cool" href="{% url 'downloaded' %}">LIBRARY</a>
+    </div>
   </div>
-  {% endif %}
 </section>
+<template id="row-tpl">{% include 'downloader/queue_row.html' only %}</template>
 {{ queue|json_script:"queue-data" }}
 {% endblock %}
 

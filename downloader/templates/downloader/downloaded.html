@@ -4,7 +4,7 @@
 
 {% block content %}
 <section class="card" style="--c:var(--purple)">
-  <h2>LIBRARY <span class="right">{{ episode_total }} EPISODE{{ episode_total|pluralize:"S" }}</span></h2>
+  <h2>LIBRARY <span class="right">{{ episode_total }} EP · {{ size_total|filesizeformat|upper }}</span></h2>
   {% if animes %}
   <ul class="shows">
     {% for anime in animes %}
@@ -14,7 +14,7 @@
         <span class="show-main">
           <span class="show-name">{{ anime.title }}</span>
           <span class="show-sub">{{ anime.done }}/{{ anime.total }} EPISODES · {{ anime.last_done|date:"j M"|upper }}</span>
-          <span class="badges"><span class="badge lang-{{ anime.language }}">{{ anime.language|upper }}</span>{% if anime.done < anime.total %}<span class="badge mute">PARTIAL</span>{% endif %}</span>
+          <span class="badges"><span class="badge lang-{{ anime.language }}">{{ anime.language|upper }}</span><span class="badge size">{{ anime.size|filesizeformat|upper }}</span>{% if anime.done < anime.total %}<span class="badge mute">PARTIAL</span>{% endif %}</span>
         </span>
         <svg class="chev" width="8" height="12" viewBox="0 0 4 6" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 0h1v1H0zM1 1h1v1H1zM2 2h1v2H2zM1 4h1v1H1zM0 5h1v1H0z" fill="currentColor"/></svg>
       </a>
@@ -24,7 +24,7 @@
   {% else %}
   <div class="void">
     <svg width="48" height="48" viewBox="0 0 12 12" shape-rendering="crispEdges" aria-hidden="true"><path d="M1 2h10v1H1zM1 3h1v7H1zM10 3h1v7h-1zM1 10h10v1H1zM5 5h1v3H5zM6 6h1v1H6z" fill="currentColor"/></svg>
-    <p>NOTHING DOWNLOADED YET.<br>THE QUEUE SHOWS WHAT'S ON ITS WAY.</p>
+    <p>NO FINISHED SHOWS YET.<br>THE QUEUE SHOWS WHAT'S ON ITS WAY.</p>
     <a class="btn link" href="{% url 'queue' %}">QUEUE</a>
   </div>
   {% endif %}

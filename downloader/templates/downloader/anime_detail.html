@@ -22,35 +22,42 @@
   </div>
   {% if anime.plot %}<p class="plot">{{ anime.plot|truncatechars:420 }}</p>{% endif %}
   <dl class="meta" style="margin-top:16px">
+    <div><dt>SIZE</dt><dd>{{ size|filesizeformat|upper }}</dd></div>
     <div><dt>FOLDER</dt><dd>{{ anime.directory_name }}</dd></div>
     <div><dt>SOURCE</dt><dd><a href="{{ anime.source_url }}" target="_blank" rel="noopener">{{ anime.source_url }}</a></dd></div>
   </dl>
 </section>
 
 <section class="card" style="--c:var(--green)">
-  <h2>EPISODES <span class="right">{{ episodes|length }}</span></h2>
+  <h2>EPISODES <span class="right">{{ done }}/{{ episodes|length }}</span></h2>
   {% if episodes %}
-  <ul class="eps" style="margin-top:0">
-    {% for episode in episodes %}
-    <li class="ep st-{{ episode.status }}">
-      <span class="ep-n">{{ episode.label }}</span>
-      <span class="ep-st">
-        {% if episode.status == 'completed' %}<span class="pill done">DONE</span>
-        {% elif episode.status == 'downloading' %}<span class="pill dl">{{ episode.progress }}%</span>
-        {% elif episode.status == 'failed' %}<span class="pill fail">FAILED</span>
-        {% elif episode.status == 'skipped' %}<span class="pill skip">SKIPPED</span>
-        {% elif episode.status == 'cancelled' %}<span class="pill stop">CANCELLED</span>
-        {% else %}<span class="pill wait">WAITING</span>{% endif %}
-      </span>
-      {% if episode.status == 'pending' or episode.status == 'failed' %}
-      <a class="mini go" href="{% url 'download_episode' episode.id %}">DOWNLOAD</a>
-      {% endif %}
-      {% if episode.status == 'failed' and episode.error_message %}<div class="ep-err">{{ episode.error_message }}</div>{% endif %}
-    </li>
-    {% endfor %}
+  <div class="key">
+    {% for status, label, count in key %}<span><i class="sw st-{{ status }}"></i>{{ count }} {{ label }}</span>{% endfor %}
+  </div>
+  <ol class="tiles">
+    {% for episode in episodes %}<li class="tile st-{{ episode.status }}" title="{{ episode.label }}">{{ episode.number }}</li>{% endfor %}
+  </ol>
+  {% if failed %}
+  <ul class="fails">
+    {% for episode in failed %}<li><span class="ep-n">{{ episode.label }}</span><span class="ep-err">{{ episode.error_message|default:"No reason given" }}</span></li>{% endfor %}
   </ul>
+  <p class="hint">FAILED EPISODES ARE RETRIED EVERY HOUR. THE QUEUE CAN RETRY THEM NOW.</p>
+  {% endif %}
   {% else %}
   <p class="empty">NO EPISODES.</p>
   {% endif %}
+</section>
+
+<section class="card" style="--c:var(--red)">
+  <h2>DELETE</h2>
+  <p class="empty">REMOVES THE SHOW FROM THE LIBRARY AND ITS FOLDER FROM THE NAS ({{ size|filesizeformat|upper }}).</p>
+  <form class="actions one" method="post" action="{% url 'delete_from_library' anime.id %}">
+    {% csrf_token %}
+    {% if downloading %}
+    <button class="btn bad" type="button" disabled>DOWNLOADING: CANCEL IT IN THE QUEUE FIRST</button>
+    {% else %}
+    <button class="btn bad" type="submit" data-confirm>DELETE SHOW + FILES</button>
+    {% endif %}
+  </form>
 </section>
 {% endblock %}

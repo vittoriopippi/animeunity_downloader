@@ -215,6 +215,7 @@ a.show:active { transform: translateY(2px); }
 .badge.dl { background: var(--blue); animation: blink .6s steps(1) infinite; }
 .badge.err { background: var(--red); color: var(--ink); }
 .badge.mute { background: var(--line-hi); color: var(--ink); }
+.badge.size { background: var(--well); color: var(--blue); box-shadow: inset 0 0 0 1px var(--blue-dk); }
 
 /* ------------------------------------------------------- queue rows --- */
 .apps { list-style: none; margin: 0; padding: 0; }
@@ -273,6 +274,30 @@ a.show:active { transform: translateY(2px); }
 .ep-pct { flex: none; width: 46px; text-align: right; font: 21px/1 var(--vt); color: var(--blue); }
 .ep-err { grid-column: 1 / -1; font: 17px/1.1 var(--vt); color: var(--red); overflow-wrap: anywhere; }
 .ep.st-skipped .ep-n, .ep.st-cancelled .ep-n { color: var(--mute); }
+
+/* the library's compact episode grid: one numbered square per episode, coloured by state */
+.key { display: flex; flex-wrap: wrap; gap: 6px 16px; font: 18px/1 var(--vt); color: var(--dim); }
+.key span { display: flex; align-items: center; gap: 6px; }
+.sw { display: block; width: 10px; height: 10px; }
+.tiles {
+  list-style: none; margin: 14px 0 0; padding: 0;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(31px, 1fr)); gap: 5px;
+}
+.tile {
+  overflow: hidden; padding: 6px 1px 5px; text-align: center; white-space: nowrap;
+  font: 18px/1 var(--vt); color: var(--dim); background: var(--well); box-shadow: 0 0 0 2px var(--line);
+}
+.tile.st-completed, .sw.st-completed { color: var(--bg-deep); background: var(--green); box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .25); }
+.tile.st-downloading, .sw.st-downloading { color: var(--bg-deep); background: var(--blue); animation: blink .6s steps(1) infinite; box-shadow: none; }
+.tile.st-pending { color: var(--yellow); box-shadow: 0 0 0 2px var(--yellow-dk); }
+.sw.st-pending { background: var(--yellow); }
+.tile.st-failed, .sw.st-failed { color: var(--ink); background: var(--red); box-shadow: none; }
+.tile.st-skipped, .tile.st-cancelled { color: var(--mute); text-decoration: line-through; }
+.sw.st-skipped, .sw.st-cancelled { background: var(--line-hi); }
+.fails { list-style: none; margin: 16px 0 0; padding: 0; }
+.fails li { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 12px; align-items: baseline; padding: 6px 0; }
+.fails li + li { border-top: 2px dotted var(--line); }
+.actions.one { grid-template-columns: minmax(0, 1fr); }
 
 .pill { flex: none; font: 8px/1 var(--px); padding: 5px 6px 4px; color: var(--bg-deep); background: var(--mute); }
 .pill.done { background: var(--green); }

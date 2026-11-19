@@ -1,4 +1,5 @@
 from celery import shared_task
+from celery.exceptions import Retry
 from django.db import IntegrityError
 from .models import Episode
 from .utils import clean_filename, get_download_url, AnimeUnityError, DOWNLOAD_TIMEOUT
@@ -6,9 +7,18 @@ from pathlib import Path
 import cloudscraper
 from django.conf import settings
 import logging
+import random
 import re
 
 logger = logging.getLogger(__name__)
+
+# AnimeUnity's video servers send at most 2 files at a time to one IP and answer a third
+# request with "503". With 4 downloads in parallel that happens now and then, so it isn't
+# an error: the episode waits about a minute and tries again with a fresh link, which
+# often points to another server.
+BUSY_STATUSES = (429, 503)
+BUSY_RETRIES = 10
+BUSY_DELAY = (45, 90)  # seconds, random so retried episodes don't all come back together
 
 def episode_file_label(episode):
     """
@@ -75,6 +85,8 @@ def download_episode_task(self, episode_id):
         scraper = cloudscraper.create_scraper()
         # The read timeout applies per socket read, so a stalled stream fails instead of hanging the worker
         with scraper.get(video_url, stream=True, timeout=DOWNLOAD_TIMEOUT) as r:
+            if r.status_code in BUSY_STATUSES:
+                return server_busy(self, episode, r.status_code)
             r.raise_for_status()
             total_length = int(r.headers.get('content-length', 0))
             dl = 0
@@ -110,6 +122,8 @@ def download_episode_task(self, episode_id):
         
         return f"Downloaded Episode {episode.number}"
 
+    except Retry:
+        raise
     except Exception as e:
         try:
              episode = Episode.objects.get(id=episode_id)
@@ -121,6 +135,30 @@ def download_episode_task(self, episode_id):
         except Exception:
             logger.error("Could not download episode (database id %s): %s", episode_id, e)
         return f"Failed: {e}"
+
+def server_busy(task, episode, status_code):
+    """
+    The video server is busy: put the episode back in the queue for a later try
+    (logged as INFO, so it raises no alert), or give up after BUSY_RETRIES tries.
+    """
+    tries = task.request.retries + 1
+    give_up = tries > BUSY_RETRIES
+    message = f"Video server busy ({status_code}) {tries} times in a row"
+    # Only if it's still ours: a CANCEL or SKIP tapped meanwhile wins
+    still_ours = Episode.objects.filter(pk=episode.pk, status='downloading').update(
+        status='failed' if give_up else 'pending', progress=0, error_message=message if give_up else None)
+    episode.anime.update_status()
+    if not still_ours:
+        return "Server busy; episode no longer queued"
+
+    if not give_up:
+        delay = random.randint(*BUSY_DELAY)
+        logger.info("%s episode %s: video server busy, trying again in %d s (%d/%d)",
+                    episode.anime.title, episode.number, delay, tries, BUSY_RETRIES)
+        raise task.retry(countdown=delay, max_retries=BUSY_RETRIES)
+
+    logger.error("Could not download %s episode %s: %s", episode.anime.title, episode.number, message)
+    return f"Failed: {message}"
 
 @shared_task
 def check_for_new_episodes_task():
@@ -171,13 +209,16 @@ def check_for_new_episodes_task():
 def retry_failed_episodes_task():
     from .models import Episode
     
-    failed_episodes = Episode.objects.filter(status='failed')
-    count = failed_episodes.count()
-    
+    failed_episodes = list(Episode.objects.filter(status='failed').select_related('anime'))
+    count = len(failed_episodes)
+
     logger.info("Retrying %d failed episodes", count)
     for ep in failed_episodes:
         ep.status = 'pending'
         ep.save()
         download_episode_task.delay(ep.id)
-    
+    # The shows are waiting again too (the queue puts failed shows last)
+    for anime in {ep.anime for ep in failed_episodes}:
+        anime.update_status()
+
     return f"Retried {count} failed episodes."

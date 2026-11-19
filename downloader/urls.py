@@ -7,6 +7,7 @@ urlpatterns = [
     path('api/queue/status/', views.QueueStatusView.as_view(), name='queue_status'),
     path('downloaded/', views.DownloadedView.as_view(), name='downloaded'),
     path('anime/<int:anime_id>/', views.AnimeDetailView.as_view(), name='anime_detail'),
+    path('anime/<int:anime_id>/delete/', views.DeleteFromLibraryView.as_view(), name='delete_from_library'),
     path('download/<int:episode_id>/', views.download_episode_view, name='download_episode'),
     
     # Cancel/Skip API

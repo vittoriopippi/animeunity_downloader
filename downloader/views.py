@@ -5,9 +5,10 @@ from .forms import AnimeAddForm
 from .utils import (clean_filename, search_anime, get_anime_info, check_broker_status, save_anime_metadata,
                     language_from_url, SearchError)
 from .tasks import download_episode_task, check_for_new_episodes_task, retry_failed_episodes_task
-from django.db.models import Q, Count, Max
+from django.db.models import Q, Count, Max, F
 from django.contrib import messages
 from django.http import JsonResponse
+from django.template.defaultfilters import filesizeformat
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 import json
@@ -102,6 +103,8 @@ def queue_status(animes):
     """What the queue page shows and refreshes every few seconds."""
     return {'animes': [{
         'id': anime.id,
+        'title': anime.title,
+        'cover_image': anime.cover_image,
         'status': anime.status,
         'language': anime.language,
         'episodes': [{
@@ -113,35 +116,73 @@ def queue_status(animes):
         } for ep in anime.episodes.all()],
     } for anime in animes]}
 
+QUEUE_ORDER = {'downloading': 0, 'pending': 1}
+
+def queue_animes():
+    """
+    The shows still in the queue: fully downloaded ones leave it (they stay in the library).
+    The ones downloading come first, then the waiting ones in the order they were added,
+    which is the order they download in; failed, skipped and cancelled ones go last.
+    """
+    animes = Anime.objects.exclude(status='completed').prefetch_related('episodes')
+    return sorted(animes, key=lambda a: (QUEUE_ORDER.get(a.status, 2), a.created_at, a.id))
+
 class QueueView(View):
     def get(self, request):
-        # Show all anime in the database with their episodes
-        animes = list(Anime.objects.all().prefetch_related('episodes').order_by('-created_at'))
+        animes = queue_animes()
         return render(request, 'downloader/queue.html', {'animes': animes, 'queue': queue_status(animes)})
 
 class QueueStatusView(View):
     def get(self, request):
-        animes = Anime.objects.all().prefetch_related('episodes').order_by('-created_at')
-        return JsonResponse(queue_status(animes))
+        return JsonResponse(queue_status(queue_animes()))
 
 class DownloadedView(View):
     def get(self, request):
-        # One row per show with at least one downloaded episode, latest download first
+        # Only finished shows, latest download first. A show is in either the queue or the
+        # library: it moves here when it leaves the queue (all its episodes downloaded or skipped)
         done = Q(episodes__status='completed')
-        animes = (Anime.objects
-                  .annotate(done=Count('episodes', filter=done), total=Count('episodes'),
-                            last_done=Max('episodes__updated_at', filter=done))
-                  .filter(done__gt=0)
-                  .order_by('-last_done'))
+        animes = list(Anime.objects
+                      .filter(status='completed')
+                      .annotate(done=Count('episodes', filter=done), total=Count('episodes'),
+                                last_done=Max('episodes__updated_at', filter=done))
+                      .order_by(F('last_done').desc(nulls_last=True)))
+        for anime in animes:
+            anime.size = anime.folder_size()
         return render(request, 'downloader/downloaded.html',
-                      {'animes': animes, 'episode_total': sum(a.done for a in animes)})
+                      {'animes': animes, 'episode_total': sum(a.done for a in animes),
+                       'size_total': sum(a.size for a in animes)})
+
+# Episode states as the library's episode grid shows them, in the order of its legend
+EPISODE_KEY = (('completed', 'DONE'), ('downloading', 'DL'), ('pending', 'WAITING'),
+               ('failed', 'FAILED'), ('skipped', 'SKIPPED'), ('cancelled', 'CANCELLED'))
 
 class AnimeDetailView(View):
     def get(self, request, anime_id):
         anime = get_object_or_404(Anime, pk=anime_id)
         episodes = list(anime.episodes.all().order_by('id'))
-        done = sum(1 for ep in episodes if ep.status == 'completed')
-        return render(request, 'downloader/anime_detail.html', {'anime': anime, 'episodes': episodes, 'done': done})
+        counts = {status: sum(1 for ep in episodes if ep.status == status) for status, _ in EPISODE_KEY}
+        return render(request, 'downloader/anime_detail.html', {
+            'anime': anime,
+            'episodes': episodes,
+            'done': counts['completed'],
+            'key': [(status, label, counts[status]) for status, label in EPISODE_KEY if counts[status]],
+            'failed': [ep for ep in episodes if ep.status == 'failed'],
+            'downloading': counts['downloading'] > 0,
+            'size': anime.folder_size(),
+        })
+
+class DeleteFromLibraryView(View):
+    """The library's DELETE: removes the show and its folder from the disk, then goes back to the library."""
+    def post(self, request, anime_id):
+        anime = get_object_or_404(Anime, pk=anime_id)
+        if anime.episodes.filter(status='downloading').exists():
+            # The worker would go on writing into the deleted folder
+            messages.error(request, f"'{anime.title}' is downloading: cancel it in the queue first.")
+            return redirect('anime_detail', anime_id=anime.id)
+        title, size = anime.title, anime.folder_size()
+        anime.delete()  # the pre_delete signal removes the folder
+        messages.success(request, f"Deleted '{title}' and its files ({filesizeformat(size)} freed).")
+        return redirect('downloaded')
 
 def download_episode_view(request, episode_id):
     broker_ok, broker_err = check_broker_status()

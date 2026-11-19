@@ -1,0 +1,18 @@
+{# One show in the queue. queue.js fills the rest, and clones the empty copy (anime=None) for shows added later. #}
+<li class="app st-{{ anime.status }}" id="anime-{{ anime.id }}" data-id="{{ anime.id }}">
+  <button class="app-head" type="button" data-act="toggle" aria-expanded="false">
+    <span class="led" data-f="led"></span>
+    <span class="cover" data-f="cover">{% if anime.cover_image %}<img src="{{ anime.cover_image }}" alt="" loading="lazy">{% endif %}</span>
+    <span class="app-main">
+      <span class="app-name" data-f="name">{{ anime.title }}</span>
+      <span class="app-sub" data-f="sub">&nbsp;</span>
+      <span class="badges" data-f="badges"></span>
+    </span>
+    <svg class="chev" width="8" height="12" viewBox="0 0 4 6" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 0h1v1H0zM1 1h1v1H1zM2 2h1v2H2zM1 4h1v1H1zM0 5h1v1H0z" fill="currentColor"/></svg>
+  </button>
+  <div class="app-body" hidden>
+    <div class="meter" data-f="meter"></div>
+    <div class="actions" data-f="actions"></div>
+    <ul class="eps" data-f="eps"></ul>
+  </div>
+</li>

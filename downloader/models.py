@@ -3,6 +3,7 @@ from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 from django.conf import settings
 from pathlib import Path
+import os
 import shutil
 
 class Anime(models.Model):
@@ -42,6 +43,19 @@ class Anime(models.Model):
     @property
     def genres_text(self):
         return ", ".join(g.strip() for g in (self.genres or "").split(",") if g.strip())
+
+    def folder_size(self):
+        """Bytes in the show's folder (episodes, poster, .nfo); 0 if there's no folder."""
+        if not self.directory_name:
+            return 0
+        total = 0
+        for root, _, files in os.walk(Path(settings.MEDIA_ROOT) / self.directory_name):
+            for name in files:
+                try:
+                    total += os.lstat(os.path.join(root, name)).st_size
+                except OSError:  # deleted while counting
+                    pass
+        return total
 
     def update_status(self):
         """Update status based on episodes."""
@@ -111,7 +125,12 @@ def anime_delete_files(sender, instance, **kwargs):
         if Anime.objects.filter(directory_name=instance.directory_name).exclude(pk=instance.pk).exists():
             print(f"Keeping directory {instance.directory_name}: shared with another anime")
             return
-        anime_path = Path(settings.MEDIA_ROOT) / instance.directory_name
+        media_root = Path(settings.MEDIA_ROOT).resolve()
+        anime_path = (media_root / instance.directory_name).resolve()
+        # Only ever a folder directly inside the media folder (never it, or its parent for "..")
+        if anime_path.parent != media_root:
+            print(f"Keeping directory {instance.directory_name!r}: not a show folder")
+            return
         if anime_path.exists() and anime_path.is_dir():
             print(f"Deleting anime directory: {anime_path}")
             shutil.rmtree(anime_path)

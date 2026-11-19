@@ -112,12 +112,37 @@
     }
   }
 
+  // A row for a show that joined the queue after the page loaded
+  function newRow(a) {
+    const li = document.getElementById('row-tpl').content.firstElementChild.cloneNode(true);
+    li.id = 'anime-' + a.id;
+    li.dataset.id = a.id;
+    $('[data-f=name]', li).textContent = a.title;
+    if (a.cover_image) {
+      const img = document.createElement('img');
+      img.src = a.cover_image;
+      img.alt = '';
+      $('[data-f=cover]', li).append(img);
+    }
+    return li;
+  }
+
   let last = JSON.parse(document.getElementById('queue-data').textContent);
 
   function render(data) {
     last = data;
+    // Finished shows leave the queue; the rest keep the server's order
+    // (downloading first, then the waiting ones in the order they'll download)
     const ids = new Set(data.animes.map(a => a.id));
     list.querySelectorAll('.app').forEach(li => { if (!ids.has(+li.dataset.id)) li.remove(); });
+    let prev = null;
+    for (const a of data.animes) {
+      const li = document.getElementById('anime-' + a.id) || newRow(a);
+      const at = prev ? prev.nextElementSibling : list.firstElementChild;
+      if (li !== at) list.insertBefore(li, at);
+      prev = li;
+    }
+    document.getElementById('queue-empty').hidden = data.animes.length > 0;
     data.animes.forEach(renderAnime);
     const all = data.animes.flatMap(a => a.episodes);
     const dl = all.filter(e => e.status === 'downloading').length;
